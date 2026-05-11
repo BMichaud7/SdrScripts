@@ -88,7 +88,7 @@ start_controller() {
     require_image "$CONTROLLER_IMAGE"
 
     local devices_xml
-    devices_xml="$(find "$SCRIPT_DIR" -name "devices*.xml" | head -1)"
+    devices_xml="$(find "$SCRIPT_DIR" -maxdepth 1 -name "devices*.xml" | head -1)"
     [[ -z "$devices_xml" ]] && devices_xml="$HW_TEST_DIR/devices-direct.xml"
     [[ -f "$devices_xml" ]] || die "No devices.xml found — expected at $HW_TEST_DIR/devices-direct.xml"
 
@@ -118,7 +118,7 @@ start_acquisition() {
     require_image "$ACQUISITION_IMAGE"
 
     local acq_xml
-    acq_xml="$(find "$SCRIPT_DIR" -name "scanner*.xml" | head -1)"
+    acq_xml="$(find "$SCRIPT_DIR" -maxdepth 1 -name "scanner*.xml" | head -1)"
     [[ -z "$acq_xml" ]] && acq_xml="$HW_TEST_DIR/scanner.xml"
     [[ -f "$acq_xml" ]] || die "No scanner.xml found — expected at $HW_TEST_DIR/scanner.xml"
 
@@ -135,7 +135,7 @@ start_analysis() {
     require_image "$ANALYSIS_IMAGE"
 
     local analysis_xml
-    analysis_xml="$(find "$SCRIPT_DIR" -name "analysis*.xml" | head -1)"
+    analysis_xml="$(find "$SCRIPT_DIR" -maxdepth 1 -name "analysis*.xml" | head -1)"
     [[ -z "$analysis_xml" ]] && analysis_xml="$HW_TEST_DIR/analysis.xml"
     [[ -f "$analysis_xml" ]] || die "No analysis.xml found — expected at $HW_TEST_DIR/analysis.xml"
 
