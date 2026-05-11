@@ -53,13 +53,16 @@ RUN git clone --depth 1 --branch 7.9.2 \
     cmake --install /build/libpqxx/build
 
 # ── Copy source trees ─────────────────────────────────────────────────────────
+# SdrSdk and SdrTaskApi are siblings so each repo's CMakeLists can find them.
 COPY SdrTaskApi/         /build/SdrTaskApi/
+COPY SdrSdk/             /build/SdrSdk/
 COPY SdrResourceManager/ /build/SdrResourceManager/
 COPY AcquisitionApp/     /build/AcquisitionApp/
 COPY AnalysisApp/        /build/AnalysisApp/
 
 # ── Remove any stale local CMake caches from developer machines ───────────────
-RUN rm -rf /build/SdrResourceManager/build \
+RUN rm -rf /build/SdrSdk/build \
+           /build/SdrResourceManager/build \
            /build/AcquisitionApp/build \
            /build/AnalysisApp/build
 
