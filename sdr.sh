@@ -275,12 +275,20 @@ cmd_test() {
         die "Controller not running — start the stack first: ./sdr.sh start"
     fi
 
-    # Stop acquisition while testing — it holds UDP port 30000 and causes conflicts
+    # Stop acquisition and analysis while testing.
+    # AcquisitionApp holds UDP port 30000; AnalysisApp subscribes to
+    # sdr.task.response (ANYCAST) and can steal responses meant for the test.
     local acq_was_running=false
+    local ana_was_running=false
     if is_running "$ACQUISITION_CTR"; then
-        info "Pausing AcquisitionApp to free UDP port pool ..."
+        info "Pausing AcquisitionApp (UDP port pool) ..."
         podman stop "$ACQUISITION_CTR" >/dev/null
         acq_was_running=true
+    fi
+    if is_running "$ANALYSIS_CTR"; then
+        info "Pausing AnalysisApp (sdr.task.response consumer) ..."
+        podman stop "$ANALYSIS_CTR" >/dev/null
+        ana_was_running=true
     fi
 
     info "Running hardware test suite against live PlutoSDR ..."
@@ -290,11 +298,13 @@ cmd_test() {
         bash -c "apt-get update -qq && apt-get install -y -qq python3-numpy 2>/dev/null && python3 /test.py"
     local rc=$?
 
-    # Restart acquisition if it was running before the test
     if $acq_was_running; then
         info "Restarting AcquisitionApp ..."
-        podman start "$ACQUISITION_CTR" >/dev/null
-        ok "AcquisitionApp restarted"
+        cmd_start acquisition 2>/dev/null || true
+    fi
+    if $ana_was_running; then
+        info "Restarting AnalysisApp ..."
+        cmd_start analysis 2>/dev/null || true
     fi
     return $rc
 }
