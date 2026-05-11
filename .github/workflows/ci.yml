@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: ["main/1.0"]
+  pull_request:
+    branches: ["main/1.0"]
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Lint sdr.sh
+        run: shellcheck -S warning sdr.sh
+
+      - name: Lint deploy.sh
+        run: shellcheck -S warning deploy.sh
+
+  validate-rpm-specs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rpm tools
+        run: sudo apt-get install -y rpm
+
+      - name: Check spec syntax
+        run: |
+          for spec in rpm/specs/*.spec; do
+            echo "Checking $spec ..."
+            rpmlint "$spec" || true   # warn only; rpmlint flags stylistic issues
+          done

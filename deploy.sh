@@ -32,6 +32,9 @@ set -euo pipefail
 PLUTO_IP="${PLUTO_IP:-192.168.1.253}"
 BROKER_USER="${BROKER_USER:-sdr_ctrl}"
 BROKER_PASS="${BROKER_PASS:-sdr_hw_test}"
+DB_NAME="${DB_NAME:-sdr_scanner}"
+DB_USER="${DB_USER:-sdr}"
+DB_PASS="${DB_PASS:-sdr_hw_test}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -41,9 +44,11 @@ RPM_OUT="$SCRIPT_DIR/rpms"
 RPMBUILD_IMAGE="sdr-rpmbuild:1.0"
 ARTEMIS_IMAGE="apache/activemq-artemis:latest-alpine"
 SOAPY_IMAGE="soapy-pluto:1.0"
+POSTGRES_IMAGE="docker.io/library/postgres:16-alpine"
 
 ARTEMIS_CTR="sdr-artemis"
 SOAPY_CTR="sdr-soapy"
+POSTGRES_CTR="sdr-postgres"
 
 NATIVE_SERVICES=(sdr-controller sdr-acquisition sdr-analysis)
 RPMS=(
@@ -151,7 +156,11 @@ start_artemis() {
 start_soapy() {
     if is_running "$SOAPY_CTR"; then warn "SoapySDR server already running"; return; fi
     podman image exists "$SOAPY_IMAGE" || \
-        die "SoapySDR server image $SOAPY_IMAGE not found.\nBuild it with: podman build -t $SOAPY_IMAGE -f hw-test/Containerfile.soapy-pluto $SRC_ROOT"
+        die "SoapySDR server image $SOAPY_IMAGE not found.\nBuild: podman build -t $SOAPY_IMAGE -f hw-test/Containerfile.soapy-pluto $SRC_ROOT"
+
+    # Confirm the PlutoSDR is on the network before trying to start
+    ping -c1 -W2 "$PLUTO_IP" >/dev/null 2>&1 || \
+        die "PlutoSDR not reachable at $PLUTO_IP — check USB/network connection"
 
     info "Starting SoapySDR server (PlutoSDR @ $PLUTO_IP) ..."
     podman run -d --rm --name "$SOAPY_CTR" --network=host \
@@ -160,16 +169,59 @@ start_soapy() {
     wait_port localhost 55132 "SoapySDR server" 20
 }
 
+start_postgres() {
+    if is_running "$POSTGRES_CTR"; then warn "PostgreSQL already running"; return; fi
+    info "Starting PostgreSQL ..."
+    podman run -d --rm --name "$POSTGRES_CTR" --network=host \
+        -e POSTGRES_DB="$DB_NAME" \
+        -e POSTGRES_USER="$DB_USER" \
+        -e POSTGRES_PASSWORD="$DB_PASS" \
+        "$POSTGRES_IMAGE" >/dev/null
+    wait_port localhost 5432 "PostgreSQL" 30
+
+    # Create schema if first run (idempotent)
+    info "Initialising database schema ..."
+    podman exec "$POSTGRES_CTR" psql -U "$DB_USER" -d "$DB_NAME" -c "
+        CREATE TABLE IF NOT EXISTS detections (
+            id          BIGSERIAL PRIMARY KEY,
+            detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            scanner_id  TEXT,
+            freq_hz     BIGINT,
+            bandwidth_hz BIGINT,
+            power_db    REAL,
+            signal_type TEXT
+        );" 2>/dev/null && ok "Schema ready" || warn "Schema init skipped (may already exist)"
+}
+
+open_firewall() {
+    # Open UDP port pool used for IQ streaming (30000-30099)
+    if command -v firewall-cmd >/dev/null 2>&1; then
+        if run_sudo firewall-cmd --query-port=30000-30099/udp --permanent 2>/dev/null | grep -q yes; then
+            warn "Firewall: UDP 30000-30099 already open"
+        else
+            info "Opening firewall UDP 30000-30099 for IQ streaming ..."
+            run_sudo firewall-cmd --permanent --add-port=30000-30099/udp
+            run_sudo firewall-cmd --reload
+            ok "Firewall updated"
+        fi
+    else
+        warn "firewall-cmd not found — ensure UDP 30000-30099 is reachable if needed"
+    fi
+}
+
 # ── Start / Stop native services ──────────────────────────────────────────────
 
 start_native() {
     need_sudo
+    # Start in dependency order; wait for controller before acquisition/analysis
     for svc in "${NATIVE_SERVICES[@]}"; do
         if run_sudo systemctl is-active --quiet "$svc" 2>/dev/null; then
             warn "$svc already running"
         else
             info "Starting $svc ..."
             run_sudo systemctl start "$svc"
+            # Give controller a moment to connect to broker before starting dependents
+            [[ "$svc" == "sdr-controller" ]] && sleep 3
             ok "$svc started"
         fi
     done
@@ -207,7 +259,7 @@ cmd_status() {
     printf "%-22s %-10s %s\n" "---------" "-----" "------"
 
     # Containers
-    for pair in "Artemis broker:$ARTEMIS_CTR" "SoapySDR server:$SOAPY_CTR"; do
+    for pair in "Artemis broker:$ARTEMIS_CTR" "PostgreSQL:$POSTGRES_CTR" "SoapySDR server:$SOAPY_CTR"; do
         local label="${pair%%:*}" ctr="${pair##*:}"
         if is_running "$ctr"; then
             printf "${GRN}%-22s %-10s${RST} %s\n" "$label" "UP" "(container: $ctr)"
@@ -254,6 +306,7 @@ cmd_logs() {
     local svc="${1:-}"
     case "$svc" in
         artemis|broker) podman logs -f "$ARTEMIS_CTR" ;;
+        postgres|db)    podman logs -f "$POSTGRES_CTR" ;;
         soapy)          podman logs -f "$SOAPY_CTR" ;;
         controller|acquisition|analysis)
             journalctl -fu "sdr-$svc" ;;
@@ -274,7 +327,9 @@ while [[ $# -gt 0 ]]; do
         install)   cmd_install ;;
         start)
             start_artemis
+            start_postgres
             start_soapy
+            open_firewall
             start_native
             echo ""
             cmd_status
@@ -282,6 +337,7 @@ while [[ $# -gt 0 ]]; do
         stop)
             stop_native  || true
             stop_container "$SOAPY_CTR"    "SoapySDR server"
+            stop_container "$POSTGRES_CTR" "PostgreSQL"
             stop_container "$ARTEMIS_CTR"  "Artemis broker"
             ;;
         restart)

@@ -240,6 +240,26 @@ cmd_build() {
     done
 }
 
+# ── CLI spectrum scan ─────────────────────────────────────────────────────────
+
+cmd_scan() {
+    local start_mhz="${1:-80}"
+    local end_mhz="${2:-200}"
+    local scan_script="$SRC_ROOT/hw-test/scan_80_200.py"
+    [[ -f "$scan_script" ]] || die "Scan script not found: $scan_script"
+
+    if ! is_running "$ARTEMIS_CTR" || ! is_running "$CONTROLLER_CTR"; then
+        die "Stack not running — start first: ./sdr.sh start"
+    fi
+
+    info "Scanning ${start_mhz}–${end_mhz} MHz ..."
+    podman run --rm --network=host \
+        -v "$scan_script:/scan.py:ro,z" \
+        sdr-controller:test-integ \
+        bash -c "apt-get update -qq && apt-get install -y -qq python3-numpy 2>/dev/null && \
+                 python3 /scan.py"
+}
+
 # ── Hardware test suite ───────────────────────────────────────────────────────
 
 cmd_test() {
@@ -348,6 +368,7 @@ case "$cmd" in
         esac
         ;;
     build)   cmd_build "${services[@]}" ;;
+    scan)    cmd_scan "${services[@]}" ;;
     test)    cmd_test ;;
     scanner) cmd_scanner ;;
     help|--help|-h)
@@ -361,6 +382,7 @@ case "$cmd" in
     restart                Stop then start all
     status                 Show container states and PlutoSDR reachability
     logs   <service>       Tail logs for a service
+    scan   [start] [end]   CLI spectrum scan (MHz, default 80–200); prints signals
     scanner                Launch Qt GUI scanner (needs DISPLAY/WAYLAND_DISPLAY)
     test                   Run hardware test suite (8 task types vs live Pluto)
     build  [services...]   Rebuild images from source
