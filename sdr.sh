@@ -216,16 +216,18 @@ cmd_build() {
                 ;;
             acquisition)
                 info "Building acquisition image ..."
+                # Context is AcquisitionApp/ — siblings are cloned from GitHub in Containerfile
                 podman build -t "$ACQUISITION_IMAGE" \
                     -f "$SRC_ROOT/AcquisitionApp/Containerfile" \
-                    "$SRC_ROOT"
+                    "$SRC_ROOT/AcquisitionApp"
                 ok "acquisition built"
                 ;;
             analysis)
                 info "Building analysis image ..."
+                # Context is AnalysisApp/ — siblings are cloned from GitHub in Containerfile
                 podman build -t "$ANALYSIS_IMAGE" \
                     -f "$SRC_ROOT/AnalysisApp/Containerfile" \
-                    "$SRC_ROOT"
+                    "$SRC_ROOT/AnalysisApp"
                 ok "analysis built"
                 ;;
             scanner)
@@ -273,11 +275,28 @@ cmd_test() {
         die "Controller not running — start the stack first: ./sdr.sh start"
     fi
 
+    # Stop acquisition while testing — it holds UDP port 30000 and causes conflicts
+    local acq_was_running=false
+    if is_running "$ACQUISITION_CTR"; then
+        info "Pausing AcquisitionApp to free UDP port pool ..."
+        podman stop "$ACQUISITION_CTR" >/dev/null
+        acq_was_running=true
+    fi
+
     info "Running hardware test suite against live PlutoSDR ..."
     podman run --rm --network=host \
         -v "$test_script:/test.py:ro,z" \
         sdr-controller:test-integ \
         bash -c "apt-get update -qq && apt-get install -y -qq python3-numpy 2>/dev/null && python3 /test.py"
+    local rc=$?
+
+    # Restart acquisition if it was running before the test
+    if $acq_was_running; then
+        info "Restarting AcquisitionApp ..."
+        podman start "$ACQUISITION_CTR" >/dev/null
+        ok "AcquisitionApp restarted"
+    fi
+    return $rc
 }
 
 # ── Scanner (interactive) ─────────────────────────────────────────────────────
