@@ -1,0 +1,26 @@
+[Unit]
+Description=SDR Radio Resource Manager (controller)
+Documentation=https://github.com/BMichaud7/SdrResourceManager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sdr
+Group=sdr
+EnvironmentFile=-/etc/sysconfig/sdr-controller
+ExecStart=/usr/bin/sdr_controller /etc/sdr-controller/devices.xml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sdr-controller
+
+# Harden: no new privileges, read-only /etc except own config dir
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sdr /run/sdr
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

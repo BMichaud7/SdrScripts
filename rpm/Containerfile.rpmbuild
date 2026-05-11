@@ -1,0 +1,118 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  Containerfile.rpmbuild
+#  Builds sdr-controller, sdr-acquisition, sdr-analysis as CentOS 10 RPMs.
+#
+#  Build (from /home/brendan — parent of all repos):
+#    podman build -t sdr-rpmbuild:1.0 \
+#        -f SdrScripts/rpm/Containerfile.rpmbuild .
+#
+#  Extract RPMs:
+#    id=$(podman create sdr-rpmbuild:1.0)
+#    podman cp $id:/rpms ./rpms
+#    podman rm $id
+#
+#  Or use SdrScripts/deploy.sh which does all of the above automatically.
+# ══════════════════════════════════════════════════════════════════════════════
+FROM quay.io/centos/centos:stream10 AS builder
+
+ENV LANG=C.UTF-8
+
+# ── Build toolchain + all library deps ───────────────────────────────────────
+RUN dnf install -y epel-release && dnf clean all
+RUN dnf install -y \
+        rpm-build rpmdevtools \
+        cmake make gcc-c++ pkg-config git ca-certificates \
+        # SDR / radio
+        SoapySDR-devel \
+        # AMQP
+        qpid-proton-cpp-devel \
+        # Config parsing
+        tinyxml2-devel \
+        # Logging / formatting
+        spdlog-devel fmt-devel \
+        # FFT
+        fftw-devel \
+        # UUID
+        libuuid-devel \
+        # PostgreSQL client (for AcquisitionApp)
+        libpq-devel \
+        # nlohmann/json header (fetched via FetchContent anyway)
+        nlohmann-json3-devel \
+    && dnf clean all
+
+# ── Build libpqxx from source (not in EPEL for el10) ─────────────────────────
+RUN git clone --depth 1 --branch 7.9.2 \
+        https://github.com/jtv/libpqxx.git /build/libpqxx && \
+    cmake -S /build/libpqxx -B /build/libpqxx/build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/usr/local \
+          -DBUILD_TEST=OFF \
+          -DBUILD_DOC=OFF && \
+    cmake --build /build/libpqxx/build --parallel "$(nproc)" && \
+    cmake --install /build/libpqxx/build && \
+    ldconfig
+
+# ── Copy source trees ─────────────────────────────────────────────────────────
+COPY SdrTaskApi/         /build/SdrTaskApi/
+COPY SdrResourceManager/ /build/SdrResourceManager/
+COPY AcquisitionApp/     /build/AcquisitionApp/
+COPY AnalysisApp/        /build/AnalysisApp/
+
+# ── Build SdrResourceManager (controller) ────────────────────────────────────
+RUN cmake -S /build/SdrResourceManager -B /build/SdrResourceManager/build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/stage/controller \
+    && cmake --build /build/SdrResourceManager/build --parallel "$(nproc)" \
+    && cmake --install /build/SdrResourceManager/build
+
+# ── Build AcquisitionApp ──────────────────────────────────────────────────────
+RUN cmake -S /build/AcquisitionApp -B /build/AcquisitionApp/build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/stage/acquisition \
+    && cmake --build /build/AcquisitionApp/build --parallel "$(nproc)" \
+    && cmake --install /build/AcquisitionApp/build
+
+# ── Build AnalysisApp ─────────────────────────────────────────────────────────
+RUN cmake -S /build/AnalysisApp -B /build/AnalysisApp/build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/stage/analysis \
+          -DFETCHCONTENT_QUIET=OFF \
+    && cmake --build /build/AnalysisApp/build --parallel "$(nproc)" \
+    && cmake --install /build/AnalysisApp/build
+
+# ── Set up rpmbuild tree ──────────────────────────────────────────────────────
+RUN rpmdev-setuptree
+
+# ── Copy spec files and supporting files ─────────────────────────────────────
+COPY SdrScripts/rpm/specs/       /root/rpmbuild/SPECS/
+COPY SdrScripts/rpm/systemd/     /root/rpmbuild/SOURCES/systemd/
+COPY SdrScripts/rpm/configs/     /root/rpmbuild/SOURCES/configs/
+
+# ── Build RPMs ────────────────────────────────────────────────────────────────
+RUN rpmbuild -bb \
+        --define "sdr_stagedir_ctrl     /stage/controller" \
+        --define "sdr_stagedir_acq      /stage/acquisition" \
+        --define "sdr_stagedir_analysis /stage/analysis" \
+        --define "pqxx_libdir           /usr/local/lib" \
+        /root/rpmbuild/SPECS/sdr-controller.spec \
+    && rpmbuild -bb \
+        --define "sdr_stagedir_ctrl     /stage/controller" \
+        --define "sdr_stagedir_acq      /stage/acquisition" \
+        --define "sdr_stagedir_analysis /stage/analysis" \
+        --define "pqxx_libdir           /usr/local/lib" \
+        /root/rpmbuild/SPECS/sdr-acquisition.spec \
+    && rpmbuild -bb \
+        --define "sdr_stagedir_ctrl     /stage/controller" \
+        --define "sdr_stagedir_acq      /stage/acquisition" \
+        --define "sdr_stagedir_analysis /stage/analysis" \
+        --define "pqxx_libdir           /usr/local/lib" \
+        /root/rpmbuild/SPECS/sdr-analysis.spec
+
+# ── Collect output RPMs ───────────────────────────────────────────────────────
+RUN mkdir /rpms && \
+    find /root/rpmbuild/RPMS -name '*.rpm' -exec cp {} /rpms/ \;
+
+# Final image just holds the RPMs for extraction
+FROM quay.io/centos/centos:stream10
+COPY --from=builder /rpms /rpms
+CMD ["/bin/ls", "-lh", "/rpms"]

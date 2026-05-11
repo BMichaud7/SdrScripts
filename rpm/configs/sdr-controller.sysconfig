@@ -1,0 +1,6 @@
+# /etc/sysconfig/sdr-controller
+# Environment overrides for the sdr-controller systemd service.
+# After editing, run: systemctl restart sdr-controller
+
+# Log level: trace debug info warn error critical
+SDR_LOG_LEVEL=info

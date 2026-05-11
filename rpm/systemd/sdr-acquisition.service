@@ -1,0 +1,26 @@
+[Unit]
+Description=SDR Acquisition App
+Documentation=https://github.com/BMichaud7/AcquisitionApp
+After=network-online.target sdr-controller.service
+Wants=network-online.target
+BindsTo=sdr-controller.service
+
+[Service]
+Type=simple
+User=sdr
+Group=sdr
+EnvironmentFile=-/etc/sysconfig/sdr-acquisition
+ExecStart=/usr/bin/sdr_acquisition /etc/sdr-acquisition/scanner.xml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sdr-acquisition
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sdr /run/sdr
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

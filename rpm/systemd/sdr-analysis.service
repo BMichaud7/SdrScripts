@@ -1,0 +1,25 @@
+[Unit]
+Description=SDR Analysis App (signal identification)
+Documentation=https://github.com/BMichaud7/AnalysisApp
+After=network-online.target sdr-controller.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sdr
+Group=sdr
+EnvironmentFile=-/etc/sysconfig/sdr-analysis
+ExecStart=/usr/bin/sdr_analysis /etc/sdr-analysis/analysis.xml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sdr-analysis
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sdr /run/sdr
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
