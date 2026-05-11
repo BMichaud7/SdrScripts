@@ -216,14 +216,14 @@ cmd_status() {
         fi
     done
 
-    # Native services
+    # Native services (systemctl is readable by any user for user-visible state)
     for svc in "${NATIVE_SERVICES[@]}"; do
-        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+        if run_sudo systemctl is-active --quiet "$svc" 2>/dev/null; then
             local uptime
-            uptime=$(systemctl show "$svc" --property=ActiveEnterTimestamp \
+            uptime=$(run_sudo systemctl show "$svc" --property=ActiveEnterTimestamp \
                      --value 2>/dev/null | cut -d' ' -f2-3 || echo "")
             printf "${GRN}%-22s %-10s${RST} since %s\n" "$svc" "RUNNING" "$uptime"
-        elif systemctl is-enabled --quiet "$svc" 2>/dev/null; then
+        elif run_sudo systemctl is-enabled --quiet "$svc" 2>/dev/null; then
             printf "${RED}%-22s %-10s${RST} (installed, not started)\n" "$svc" "STOPPED"
         else
             printf "${YLW}%-22s %-10s${RST} (not installed — run: ./deploy.sh install)\n" \

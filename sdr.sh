@@ -225,7 +225,7 @@ cmd_build() {
                 info "Building analysis image ..."
                 podman build -t "$ANALYSIS_IMAGE" \
                     -f "$SRC_ROOT/AnalysisApp/Containerfile" \
-                    "$SRC_ROOT/AnalysisApp"
+                    "$SRC_ROOT"
                 ok "analysis built"
                 ;;
             scanner)

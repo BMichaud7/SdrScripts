@@ -36,27 +36,32 @@ RUN dnf install -y \
         libuuid-devel \
         # PostgreSQL client (for AcquisitionApp)
         libpq-devel \
-        # nlohmann/json header (fetched via FetchContent anyway)
-        nlohmann-json3-devel \
     && dnf clean all
 
-# ── Build libpqxx from source (not in EPEL for el10) ─────────────────────────
+# ── Build libpqxx static from source (not in EPEL for el10) ──────────────────
+# Static link so we don't need to bundle a .so into the RPM; only libpq (in
+# CentOS baseos) is needed at runtime.
 RUN git clone --depth 1 --branch 7.9.2 \
         https://github.com/jtv/libpqxx.git /build/libpqxx && \
     cmake -S /build/libpqxx -B /build/libpqxx/build \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=/usr/local \
+          -DBUILD_SHARED_LIBS=OFF \
           -DBUILD_TEST=OFF \
           -DBUILD_DOC=OFF && \
     cmake --build /build/libpqxx/build --parallel "$(nproc)" && \
-    cmake --install /build/libpqxx/build && \
-    ldconfig
+    cmake --install /build/libpqxx/build
 
 # ── Copy source trees ─────────────────────────────────────────────────────────
 COPY SdrTaskApi/         /build/SdrTaskApi/
 COPY SdrResourceManager/ /build/SdrResourceManager/
 COPY AcquisitionApp/     /build/AcquisitionApp/
 COPY AnalysisApp/        /build/AnalysisApp/
+
+# ── Remove any stale local CMake caches from developer machines ───────────────
+RUN rm -rf /build/SdrResourceManager/build \
+           /build/AcquisitionApp/build \
+           /build/AnalysisApp/build
 
 # ── Build SdrResourceManager (controller) ────────────────────────────────────
 RUN cmake -S /build/SdrResourceManager -B /build/SdrResourceManager/build \
@@ -66,9 +71,12 @@ RUN cmake -S /build/SdrResourceManager -B /build/SdrResourceManager/build \
     && cmake --install /build/SdrResourceManager/build
 
 # ── Build AcquisitionApp ──────────────────────────────────────────────────────
+# libpqxx's pkg-config marks libpq as a private dep — add it explicitly so the
+# linker resolves PQ* symbols in the final binary.
 RUN cmake -S /build/AcquisitionApp -B /build/AcquisitionApp/build \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=/stage/acquisition \
+          -DCMAKE_EXE_LINKER_FLAGS="-lpq" \
     && cmake --build /build/AcquisitionApp/build --parallel "$(nproc)" \
     && cmake --install /build/AcquisitionApp/build
 
@@ -79,6 +87,12 @@ RUN cmake -S /build/AnalysisApp -B /build/AnalysisApp/build \
           -DFETCHCONTENT_QUIET=OFF \
     && cmake --build /build/AnalysisApp/build --parallel "$(nproc)" \
     && cmake --install /build/AnalysisApp/build
+
+# ── Verify staged files exist before rpmbuild ─────────────────────────────────
+RUN echo "=== controller ===" && find /stage/controller -type f && \
+    echo "=== acquisition ===" && find /stage/acquisition -type f && \
+    echo "=== analysis ===" && find /stage/analysis -type f && \
+    echo "=== libpqxx ===" && find /usr/local/lib -name 'libpqxx*'
 
 # ── Set up rpmbuild tree ──────────────────────────────────────────────────────
 RUN rpmdev-setuptree
