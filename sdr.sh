@@ -240,6 +240,26 @@ cmd_build() {
     done
 }
 
+# ── Hardware test suite ───────────────────────────────────────────────────────
+
+cmd_test() {
+    local test_script="$SRC_ROOT/hw-test/test_all_task_types.py"
+    [[ -f "$test_script" ]] || die "Test script not found: $test_script"
+
+    if ! is_running "$ARTEMIS_CTR"; then
+        die "Broker not running — start the stack first: ./sdr.sh start"
+    fi
+    if ! is_running "$CONTROLLER_CTR"; then
+        die "Controller not running — start the stack first: ./sdr.sh start"
+    fi
+
+    info "Running hardware test suite against live PlutoSDR ..."
+    podman run --rm --network=host \
+        -v "$test_script:/test.py:ro,z" \
+        sdr-controller:test-integ \
+        bash -c "apt-get update -qq && apt-get install -y -qq python3-numpy 2>/dev/null && python3 /test.py"
+}
+
 # ── Scanner (interactive) ─────────────────────────────────────────────────────
 
 cmd_scanner() {
@@ -328,6 +348,7 @@ case "$cmd" in
         esac
         ;;
     build)   cmd_build "${services[@]}" ;;
+    test)    cmd_test ;;
     scanner) cmd_scanner ;;
     help|--help|-h)
         cat <<EOF
@@ -341,6 +362,7 @@ case "$cmd" in
     status                 Show container states and PlutoSDR reachability
     logs   <service>       Tail logs for a service
     scanner                Launch Qt GUI scanner (needs DISPLAY/WAYLAND_DISPLAY)
+    test                   Run hardware test suite (8 task types vs live Pluto)
     build  [services...]   Rebuild images from source
 
   ${YLW}Services:${RST}  broker  controller  acquisition  analysis
