@@ -7,11 +7,15 @@
 #          signal_logger.py (persist to SQLite)
 #
 #  Usage:
-#    ./scan.sh                          # scan 80–1000 MHz, write to signals.db
-#    ./scan.sh --db /data/signals.db    # custom DB path
-#    ./scan.sh --range 400-1000         # scan subset (MHz)
-#    ./scan.sh --onnx                   # force ONNX classifier (if model ready)
-#    ./scan.sh --no-analysis            # detections only, skip AnalysisApp
+#    ./scan.sh <start>-<stop>                    # e.g. ./scan.sh 88-108
+#    ./scan.sh <start>-<stop> --db signals.db    # custom DB path
+#    ./scan.sh <start>-<stop> --onnx             # force ONNX classifier
+#    ./scan.sh <start>-<stop> --no-analysis      # detections only
+#
+#  Range is in MHz.  Examples:
+#    ./scan.sh 80-1000     # full sweep
+#    ./scan.sh 88-108      # FM broadcast band only
+#    ./scan.sh 400-800     # UHF/LTE
 #
 #  Ctrl+C stops all services cleanly.
 # ══════════════════════════════════════════════════════════════════════════════
@@ -23,8 +27,8 @@ ML_MODEL_DIR="$SCRIPT_DIR/../AnalysisApp/tools/ml/models"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 DB_PATH="$SCRIPT_DIR/signals.db"
-START_MHZ=80
-STOP_MHZ=1000
+START_MHZ=""
+STOP_MHZ=""
 USE_ONNX=false
 NO_ANALYSIS=false
 
@@ -53,13 +57,44 @@ warn()  { echo -e "${YLW}[scan]${RST} $*"; }
 die()   { echo -e "${RED}[scan]${RST} $*" >&2; exit 1; }
 
 # ── Arg parse ─────────────────────────────────────────────────────────────────
+usage() {
+    echo -e "Usage: ${0##*/} <start_mhz>-<stop_mhz> [options]"
+    echo -e "  e.g.  ${0##*/} 80-1000"
+    echo -e "        ${0##*/} 88-108 --no-analysis"
+    echo -e "        ${0##*/} 400-800 --db /data/signals.db"
+    echo -e ""
+    echo -e "Options:"
+    echo -e "  --db PATH        SQLite database path (default: signals.db)"
+    echo -e "  --onnx           Force ONNX classifier (auto-enabled if model ready)"
+    echo -e "  --no-analysis    Skip AnalysisApp — detections only, faster sweep"
+    exit 1
+}
+
+# First positional arg must be the range
+if [[ $# -eq 0 || "$1" == --* ]]; then
+    usage
+fi
+
+RANGE="$1"; shift
+if [[ ! "$RANGE" =~ ^[0-9]+-[0-9]+$ ]]; then
+    die "Range must be <start>-<stop> in MHz, e.g. 80-1000 (got: '$RANGE')"
+fi
+START_MHZ="${RANGE%-*}"
+STOP_MHZ="${RANGE#*-}"
+
+if (( START_MHZ >= STOP_MHZ )); then
+    die "Start ($START_MHZ MHz) must be less than stop ($STOP_MHZ MHz)"
+fi
+if (( START_MHZ < 70 || STOP_MHZ > 6000 )); then
+    die "Range must be within PlutoSDR limits: 70–6000 MHz"
+fi
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --db)          DB_PATH="$2";   shift 2 ;;
-        --range)       range="$2"; START_MHZ="${range%-*}"; STOP_MHZ="${range#*-}"; shift 2 ;;
-        --onnx)        USE_ONNX=true;  shift ;;
+        --db)          DB_PATH="$2";     shift 2 ;;
+        --onnx)        USE_ONNX=true;    shift ;;
         --no-analysis) NO_ANALYSIS=true; shift ;;
-        *) die "Unknown argument: $1" ;;
+        *) die "Unknown argument: $1  (run ${0##*/} for usage)" ;;
     esac
 done
 
