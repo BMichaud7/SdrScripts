@@ -136,8 +136,8 @@ cat > "$SCAN_CFG" << XML
     <bandwidth_hz>20000000</bandwidth_hz>
   </device>
   <sweep>
-    <start_hz>$(( START_MHZ * 1000000 ))</start_hz>
-    <stop_hz>$(( STOP_MHZ * 1000000 ))</stop_hz>
+    <start_hz>$(( START_MHZ * 1000000 + 8000000 ))</start_hz>
+    <stop_hz>$(( STOP_MHZ * 1000000 + 8000000 ))</stop_hz>
     <dwell_samples>2097152</dwell_samples>
     <fft_size>8192</fft_size>
     <usable_bw_fraction>0.80</usable_bw_fraction>

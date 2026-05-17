@@ -34,8 +34,8 @@ except ModuleNotFoundError:
     import proton.reactor
 
 
-DEDUP_HZ   = 500_000   # merge signals within 500 kHz
-DEDUP_SEC  = 60        # and within 60 seconds
+DEDUP_HZ   = 100_000   # merge signals within 100 kHz (FM stations spaced 200 kHz apart)
+DEDUP_SEC  = 600       # and within 10 minutes (covers multiple sweep passes)
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
