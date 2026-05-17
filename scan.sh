@@ -220,11 +220,10 @@ cleanup() {
     echo ""
     info "Shutting down …"
     [[ -n "$LOGGER_PID" ]] && kill "$LOGGER_PID" 2>/dev/null || true
-    # Stop only the apps we started (not broker/controller if they were pre-existing)
-    for ctr in "$ANALYSIS_CTR" "$ACQUISITION_CTR"; do
+    for ctr in "$ANALYSIS_CTR" "$ACQUISITION_CTR" "$CONTROLLER_CTR" "$ARTEMIS_CTR"; do
         is_running "$ctr" && podman stop "$ctr" >/dev/null 2>&1 && info "Stopped $ctr" || true
     done
-    ok "Scan stopped (broker + controller left running)"
+    ok "All services stopped"
 }
 trap cleanup INT TERM EXIT
 
