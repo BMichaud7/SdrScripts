@@ -251,19 +251,18 @@ else
     ok "Broker already running"
 fi
 
-# 2. Controller
-if ! is_running "$CONTROLLER_CTR"; then
-    [[ -f "$DEVICES_XML" ]] || die "No devices.xml at $DEVICES_XML"
-    info "Starting SdrResourceManager …"
-    podman run -d --rm --name "$CONTROLLER_CTR" --network=host \
-        -v "$DEVICES_XML:/etc/sdr-controller/devices.xml:ro,z" \
-        "$CONTROLLER_IMAGE" >/dev/null
-    sleep 3
-    is_running "$CONTROLLER_CTR" || die "Controller failed to start"
-    ok "Controller running"
-else
-    ok "Controller already running"
+# 2. Controller — always restart to clear any stale device allocations
+[[ -f "$DEVICES_XML" ]] || die "No devices.xml at $DEVICES_XML"
+if is_running "$CONTROLLER_CTR"; then
+    info "Restarting SdrResourceManager (clearing stale allocations) …"
+    podman stop "$CONTROLLER_CTR" >/dev/null 2>&1 || true
 fi
+podman run -d --rm --replace --name "$CONTROLLER_CTR" --network=host \
+    -v "$DEVICES_XML:/etc/sdr-controller/devices.xml:ro,z" \
+    "$CONTROLLER_IMAGE" >/dev/null
+sleep 3
+is_running "$CONTROLLER_CTR" || die "Controller failed to start"
+ok "Controller running"
 
 # 3. AcquisitionApp
 info "Starting AcquisitionApp (${START_MHZ}–${STOP_MHZ} MHz) …"
