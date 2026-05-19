@@ -10,12 +10,24 @@
 #    ./scan.sh <start>-<stop>                    # e.g. ./scan.sh 88-108
 #    ./scan.sh <start>-<stop> --db signals.db    # custom DB path
 #    ./scan.sh <start>-<stop> --onnx             # force ONNX classifier
-#    ./scan.sh <start>-<stop> --no-analysis      # detections only
+#    ./scan.sh <start>-<stop> --no-analysis      # detections only (fastest)
+#    ./scan.sh <start>-<stop> --no-pause         # concurrent scan+analysis (may stall)
 #
 #  Range is in MHz.  Examples:
 #    ./scan.sh 80-1000     # full sweep
 #    ./scan.sh 88-108      # FM broadcast band only
 #    ./scan.sh 400-800     # UHF/LTE
+#
+#  Phased operation (default with analysis):
+#    AcquisitionApp does ONE sweep (rank 2, ~8s), then pauses 3s so
+#    AnalysisApp (rank 1) can classify up to 3 signals.  Fast-path signals
+#    (ONNX on embedded snapshot) finish in ~5ms; slow-path full collection
+#    takes ~165ms.  Worst case 3 × 165ms = 500ms, well within the 3s window.
+#    When the pause ends, SCAN re-submits and preempts any running analysis.
+#    Cycle: ~8s scan + ~5s drain + 3s analysis window + ~5s reconnect ≈ 21s.
+#
+#  For bulk classification of a pre-scanned DB, stop scan and run:
+#    python3 replay_detections.py --db signals.db --count 100
 #
 #  Ctrl+C stops all services cleanly.
 # ══════════════════════════════════════════════════════════════════════════════
@@ -31,6 +43,7 @@ START_MHZ=""
 STOP_MHZ=""
 USE_ONNX=false
 NO_ANALYSIS=false
+NO_PAUSE=false
 
 BROKER_USER="sdr_ctrl"
 BROKER_PASS="sdr_hw_test"
@@ -66,7 +79,8 @@ usage() {
     echo -e "Options:"
     echo -e "  --db PATH        SQLite database path (default: signals.db)"
     echo -e "  --onnx           Force ONNX classifier (auto-enabled if model ready)"
-    echo -e "  --no-analysis    Skip AnalysisApp — detections only, faster sweep"
+    echo -e "  --no-analysis    Skip AnalysisApp — detections only, fastest sweep"
+    echo -e "  --no-pause       Disable analysis pause window (may stall SCAN)"
     exit 1
 }
 
@@ -94,12 +108,13 @@ while [[ $# -gt 0 ]]; do
         --db)          DB_PATH="$2";     shift 2 ;;
         --onnx)        USE_ONNX=true;    shift ;;
         --no-analysis) NO_ANALYSIS=true; shift ;;
+        --no-pause)    NO_PAUSE=true;    shift ;;
         *) die "Unknown argument: $1  (run ${0##*/} for usage)" ;;
     esac
 done
 
 # Auto-enable ONNX if model is ready and image exists
-MODEL_ONNX="$ML_MODEL_DIR/amr_cnn_28class.onnx"
+MODEL_ONNX="$ML_MODEL_DIR/modulation_classifier.onnx"
 if [[ "$USE_ONNX" == "false" && -f "$MODEL_ONNX" ]]; then
     if podman image exists "$ANALYSIS_ONNX_IMAGE" 2>/dev/null; then
         USE_ONNX=true
@@ -108,6 +123,9 @@ if [[ "$USE_ONNX" == "false" && -f "$MODEL_ONNX" ]]; then
 fi
 
 # ── Generate scanner config ───────────────────────────────────────────────────
+ANALYSIS_PAUSE_MS=3000
+[[ "$NO_ANALYSIS" == "true" || "$NO_PAUSE" == "true" ]] && ANALYSIS_PAUSE_MS=0
+
 SCAN_CFG=$(mktemp /tmp/scan_config.XXXXXX.xml)
 chmod 644 "$SCAN_CFG"
 trap 'rm -f "$SCAN_CFG"' EXIT
@@ -136,16 +154,25 @@ cat > "$SCAN_CFG" << XML
     <bandwidth_hz>20000000</bandwidth_hz>
   </device>
   <sweep>
-    <start_hz>$(( START_MHZ * 1000000 + 8000000 ))</start_hz>
-    <stop_hz>$(( STOP_MHZ * 1000000 + 8000000 ))</stop_hz>
-    <dwell_samples>2097152</dwell_samples>
+    <start_hz>$(( START_MHZ * 1000000 ))</start_hz>
+    <stop_hz>$(( STOP_MHZ * 1000000 ))</stop_hz>
+    <dwell_samples>131072</dwell_samples>
     <fft_size>8192</fft_size>
     <usable_bw_fraction>0.80</usable_bw_fraction>
-    <threshold_db>10.0</threshold_db>
+    <threshold_db>6.0</threshold_db>
     <min_signal_bw_hz>12000</min_signal_bw_hz>
     <settle_samples>20000</settle_samples>
+    <dc_guard_hz>75000</dc_guard_hz>
+    <!-- CA-CFAR: 8 guard + 32 reference cells each side (O(N) via prefix sum) -->
+    <cfar_guard_bins>8</cfar_guard_bins>
+    <cfar_ref_bins>32</cfar_ref_bins>
+    <!-- Reject candidate runs with peak-to-mean ratio below this (dB) -->
+    <min_papr_db>3.0</min_papr_db>
+    <!-- Asymmetric EMA for per-frequency noise floor: rise=4×alpha, fall=alpha -->
+    <noise_floor_alpha>0.08</noise_floor_alpha>
   </sweep>
-  <rank>1</rank>
+  <rank>2</rank>
+  <analysis_pause_ms>${ANALYSIS_PAUSE_MS}</analysis_pause_ms>
   <receiver>
     <local_ip>127.0.0.1</local_ip>
     <port>0</port>
@@ -161,10 +188,15 @@ trap 'rm -f "$SCAN_CFG" "$ANALYSIS_CFG"' EXIT
 if [[ "$USE_ONNX" == "true" ]]; then
     ONNX_BLOCK="
     <onnx>
-      <model_path>/models/amr_cnn_28class.onnx</model_path>
-      <classes_path>/models/amr_cnn_28class.classes.json</classes_path>
-      <input_len>512</input_len>
-      <use_gpu>false</use_gpu>
+      <model_path>/models/modulation_classifier.onnx</model_path>
+      <classes_path>/models/classes.json</classes_path>
+      <input_len>1024</input_len>
+      <!-- use_tensorrt: try TensorRT EP first (3× faster on RTX); falls back to CUDA EP -->
+      <use_gpu>true</use_gpu>
+      <use_tensorrt>true</use_tensorrt>
+      <tensorrt_fp16>true</tensorrt_fp16>
+      <tensorrt_cache_mb>128</tensorrt_cache_mb>
+      <max_batch>8</max_batch>
       <fallback_confidence_threshold>0.60</fallback_confidence_threshold>
       <fallback_on_unknown>true</fallback_on_unknown>
     </onnx>"
@@ -188,15 +220,21 @@ cat > "$ANALYSIS_CFG" << XML
     <task_request_queue>sdr.task.request</task_request_queue>
     <task_response_queue>sdr.task.response</task_response_queue>
   </amqp>
+  <database>
+    <host>localhost</host><port>5432</port><name>sdr_scanner</name>
+    <user>sdr</user><password>sdr_hw_test</password>
+  </database>
   <collector>
     <analysis_sample_rate_sps>2000000</analysis_sample_rate_sps>
-    <collect_samples>200000</collect_samples>
-    <analysis_timeout_ms>60000</analysis_timeout_ms>
+    <!-- 65536 samples at 2 MSPS = 32 ms — sufficient for cumulants and OFDM detection.
+         The fast path (ONNX on embedded snapshot) bypasses collection entirely. -->
+    <collect_samples>65536</collect_samples>
+    <analysis_timeout_ms>10000</analysis_timeout_ms>
   </collector>
   <engine>
     <fft_size>4096</fft_size>
     <snr_threshold_db>5.0</snr_threshold_db>
-    <rank>2</rank>
+    <rank>1</rank>
     ${ONNX_BLOCK}
   </engine>
 </sdr_analysis>
@@ -235,6 +273,7 @@ echo -e "${GRN}╚════════════════════�
 info "Range: ${START_MHZ}–${STOP_MHZ} MHz"
 info "ONNX classifier: $USE_ONNX"
 info "Analysis: $( [[ "$NO_ANALYSIS" == "true" ]] && echo "disabled" || echo "enabled ($FINAL_ANALYSIS_IMAGE)" )"
+info "Analysis pause: $( [[ "$ANALYSIS_PAUSE_MS" -gt 0 ]] && echo "${ANALYSIS_PAUSE_MS}ms per sweep" || echo "disabled" )"
 info "Database: $DB_PATH"
 echo ""
 
@@ -244,7 +283,7 @@ if ! is_running "$ARTEMIS_CTR"; then
     podman run -d --rm --name "$ARTEMIS_CTR" --network=host \
         -e ARTEMIS_USER="$BROKER_USER" \
         -e ARTEMIS_PASSWORD="$BROKER_PASS" \
-        apache/activemq-artemis:latest-alpine >/dev/null
+        docker.io/apache/activemq-artemis:latest-alpine >/dev/null
     wait_port localhost 5672 "Artemis AMQP" 40
 else
     ok "Broker already running"
@@ -257,23 +296,35 @@ if is_running "$CONTROLLER_CTR"; then
     podman stop "$CONTROLLER_CTR" >/dev/null 2>&1 || true
 fi
 podman run -d --rm --replace --name "$CONTROLLER_CTR" --network=host \
+    --privileged \
     -v "$DEVICES_XML:/etc/sdr-controller/devices.xml:ro,z" \
     "$CONTROLLER_IMAGE" >/dev/null
 sleep 3
 is_running "$CONTROLLER_CTR" || die "Controller failed to start"
 ok "Controller running"
 
-# 3. AcquisitionApp
+# 3. Signal logger — start BEFORE AcquisitionApp so it doesn't miss the first sweep
+info "Starting signal_logger (→ $DB_PATH) …"
+PYTHONPATH="$PROTON_PATH" python3 "$SCRIPT_DIR/signal_logger.py" \
+    --db "$DB_PATH" --broker "$BROKER_URL" \
+    --user "$BROKER_USER" --pass "$BROKER_PASS" &
+LOGGER_PID=$!
+ok "Signal logger PID=$LOGGER_PID"
+sleep 4   # give logger time to connect to AMQP before acquisition starts
+
+# 4. AcquisitionApp
 info "Starting AcquisitionApp (${START_MHZ}–${STOP_MHZ} MHz) …"
+mkdir -p "$SCRIPT_DIR/.cache"
 podman run -d --rm --replace --name "$ACQUISITION_CTR" --network=host \
     -v "$SCAN_CFG:/etc/sdr-acquisition/scanner.xml:ro,z" \
+    -v "$SCRIPT_DIR/.cache:/var/cache/sdr-acquisition:z" \
     -e SDR_LOG_LEVEL=info \
     "$ACQUISITION_IMAGE" >/dev/null
 sleep 3
 is_running "$ACQUISITION_CTR" || die "AcquisitionApp failed to start"
 ok "AcquisitionApp running"
 
-# 4. AnalysisApp (optional)
+# 5. AnalysisApp (optional)
 if [[ "$NO_ANALYSIS" == "false" ]]; then
     info "Starting AnalysisApp ($FINAL_ANALYSIS_IMAGE) …"
     ANALYSIS_RUN_ARGS=(-d --rm --replace --name "$ANALYSIS_CTR" --network=host
@@ -288,14 +339,6 @@ if [[ "$NO_ANALYSIS" == "false" ]]; then
     ok "AnalysisApp running"
 fi
 
-# 5. Signal logger
-info "Starting signal_logger (→ $DB_PATH) …"
-PYTHONPATH="$PROTON_PATH" python3 "$SCRIPT_DIR/signal_logger.py" \
-    --db "$DB_PATH" --broker "$BROKER_URL" \
-    --user "$BROKER_USER" --pass "$BROKER_PASS" &
-LOGGER_PID=$!
-ok "Signal logger PID=$LOGGER_PID"
-
 echo ""
 ok "Pipeline running — press Ctrl+C to stop"
 echo -e "  Monitor:  ${BLU}./read_signals.sh --db $DB_PATH${RST}"
@@ -303,3 +346,17 @@ echo ""
 
 # Wait for Ctrl+C
 wait "$LOGGER_PID" 2>/dev/null || true
+
+# NOTE: Running with --no-analysis gives the best scanning performance (7.6s sweep).
+# For phased scan+analysis: AcquisitionApp does one sweep (rank 2), then releases the
+# SDR for 15s so AnalysisApp (rank 1) can classify up to 3 signals. When the window
+# ends, SCAN re-submits (rank 2) and preempts any running analysis. Approx 33s cycle.
+#
+# Fast-path classification: AnalysisApp extracts a 1024-sample IQ snapshot from each
+# RF_DETECTION message and runs ONNX in ~5 ms without re-acquiring the SDR. Signals
+# with ONNX confidence ≥ 75% are published immediately; the remaining ~35% go through
+# the full 32 ms SDR collection + feature extraction path.
+#
+# ONNX model: train with AnalysisApp/training/train_classifier.py, then copy
+#   modulation_classifier.onnx + classes.json → $ML_MODEL_DIR
+# For bulk classification of a pre-scanned DB: replay_detections.py

@@ -95,8 +95,11 @@ class _Handler(proton.handlers.MessagingHandler):
         self._db      = db
         self._lock    = lock
         self._stop_ev = stop_ev
-        # In-memory dedup: freq_hz → (timestamp_ms, row_id)
-        self._recent: dict[float, tuple[int, int]] = {}
+        # In-memory dedup, O(1) lookup via 100-kHz buckets.
+        # _buckets[bucket] = (freq_hz, timestamp_ms, row_id)
+        # bucket = int(freq_hz / DEDUP_HZ)
+        # Lookup checks bucket-1, bucket, bucket+1 to handle boundary signals.
+        self._buckets: dict[int, tuple[float, int, int]] = {}
 
     def on_start(self, ev):
         c = ev.container.connect(
@@ -159,7 +162,7 @@ class _Handler(proton.handlers.MessagingHandler):
                 )
                 self._db.commit()
                 row_id = cur.lastrowid
-                self._recent[freq] = (ts_ms, row_id)
+                self._store_recent(freq, ts_ms, row_id)
 
     # ── Analysis result (from AnalysisApp) ────────────────────────────────────
 
@@ -205,34 +208,34 @@ class _Handler(proton.handlers.MessagingHandler):
                     (iso, snr, bw, mod_str, mod_class,
                      is_ofdm, is_burst, is_fhss, int(cls), row_id),
                 )
-            else:
-                cur = self._db.execute(
-                    """INSERT INTO signals
-                       (first_seen, last_seen, timestamp_ms,
-                        freq_hz, freq_mhz, bandwidth_hz, snr_db,
-                        modulation, mod_class, is_ofdm, is_burst, is_fhss, classified)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (iso, iso, ts_ms, freq, freq / 1e6, bw, snr,
-                     mod_str, mod_class, is_ofdm, is_burst, is_fhss, int(cls)),
-                )
-                row_id = cur.lastrowid
-                self._recent[freq] = (ts_ms, row_id)
-
-            self._db.commit()
+                self._db.commit()
+            # Analysis results without a matching detection are discarded —
+            # they come from the AnalysisApp tuning to stale/out-of-range freqs.
 
     # ── Dedup helpers ─────────────────────────────────────────────────────────
 
+    def _bucket(self, freq: float) -> int:
+        return int(freq / DEDUP_HZ)
+
     def _find_recent(self, freq: float, ts_ms: int) -> int | None:
-        for known_freq, (known_ts, row_id) in self._recent.items():
-            if abs(freq - known_freq) < DEDUP_HZ:
-                if (ts_ms - known_ts) < DEDUP_SEC * 1000:
-                    return row_id
+        b = self._bucket(freq)
+        for candidate in (b - 1, b, b + 1):
+            entry = self._buckets.get(candidate)
+            if entry is None:
+                continue
+            ef, ets, erid = entry
+            if abs(freq - ef) < DEDUP_HZ and (ts_ms - ets) < DEDUP_SEC * 1000:
+                return erid
         return None
+
+    def _store_recent(self, freq: float, ts_ms: int, row_id: int) -> None:
+        self._buckets[self._bucket(freq)] = (freq, ts_ms, row_id)
 
     def _flush_old(self) -> None:
         cutoff = now_ms() - DEDUP_SEC * 1000
-        self._recent = {
-            f: (ts, rid) for f, (ts, rid) in self._recent.items()
+        self._buckets = {
+            b: (f, ts, rid)
+            for b, (f, ts, rid) in self._buckets.items()
             if ts >= cutoff
         }
 
