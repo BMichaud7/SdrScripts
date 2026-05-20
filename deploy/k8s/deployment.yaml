@@ -34,7 +34,7 @@ spec:
 
       containers:
         - name: signal-logger
-          image: ghcr.io/bmichaud7/signal-logger:1.0.0
+          image: ghcr.io/bmichaud7/signal-logger:1.1.0
           imagePullPolicy: Always
 
           args:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-clear_signals.py — Clear the signal detection database.
+@file clear_signals.py
+@brief Clear or trim the SQLite signal detection database.
 
 Usage:
     ./clear_signals.sh                      # clear all records (keep file)
@@ -22,6 +23,7 @@ DEFAULT_DB  = SCRIPT_DIR / "signals.db"
 
 
 def main() -> None:
+    """@brief Entry point: parse arguments and clear/trim the database with user confirmation."""
     ap = argparse.ArgumentParser(description="Clear the SDR signal database")
     ap.add_argument("--db",          default=str(DEFAULT_DB))
     ap.add_argument("--all",         action="store_true",

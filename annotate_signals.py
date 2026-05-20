@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-annotate_signals.py — Cross-reference detected signals with US frequency allocations.
+@file annotate_signals.py
+@brief Cross-reference detected signals with US frequency allocations.
 
 Usage:
     python3 annotate_signals.py [--db signals.db] [--min-hits 1]
@@ -73,6 +74,10 @@ ALLOCATIONS = [
 
 
 def lookup(freq_mhz: float) -> Optional[tuple]:
+    """@brief Find the US frequency allocation entry for a given frequency.
+    @param freq_mhz  Frequency in MHz.
+    @return          (service, expected_modulation, notes) tuple, or None if unallocated.
+    """
     for start, stop, service, mod, notes in ALLOCATIONS:
         if start <= freq_mhz < stop:
             return (service, mod, notes)
@@ -80,6 +85,11 @@ def lookup(freq_mhz: float) -> Optional[tuple]:
 
 
 def verdict(detected_mod: str, expected_mod: Optional[str]) -> str:
+    """@brief Compare a detected modulation against the expected allocation modulation.
+    @param detected_mod  Modulation string from the signals table (may be empty).
+    @param expected_mod  Expected modulation from ALLOCATIONS (may be None).
+    @return              "match", "mismatch", "unclassified", or "protected".
+    """
     if not expected_mod:
         return "protected"
     if not detected_mod:
@@ -97,6 +107,7 @@ def verdict(detected_mod: str, expected_mod: Optional[str]) -> str:
 
 
 def main():
+    """@brief Entry point: cross-reference all signals in the DB against ALLOCATIONS and print a report."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default="signals.db")
     ap.add_argument("--min-hits", type=int, default=1)

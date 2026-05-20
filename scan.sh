@@ -299,11 +299,9 @@ if ! is_running "$POSTGRES_CTR"; then
         podman exec "$POSTGRES_CTR" pg_isready -U "$PG_USER" -d "$PG_DB" 2>/dev/null && break
         sleep 1
     done
-    # Apply schemas (IF NOT EXISTS — safe to re-run)
+    # Apply shared schema (AcquisitionApp + AnalysisApp use the same signals table)
     podman exec -i "$POSTGRES_CTR" psql -U "$PG_USER" -d "$PG_DB" \
         < "$SCRIPT_DIR/../AcquisitionApp/schema/init.sql" >/dev/null
-    podman exec -i "$POSTGRES_CTR" psql -U "$PG_USER" -d "$PG_DB" \
-        < "$SCRIPT_DIR/../AnalysisApp/schema/init.sql" >/dev/null
     ok "PostgreSQL ready"
 else
     ok "PostgreSQL already running"

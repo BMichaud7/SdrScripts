@@ -1,2 +1,6 @@
 rpms/*.rpm
 signals.db
+
+# Generated docs
+docs/html/
+docs/master/

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-read_signals.py — Query the signal detection database and display results.
+@file read_signals.py
+@brief Query the SQLite signal detection database and display results.
 
 Usage:
     ./read_signals.sh                         # all signals, sorted by freq
@@ -59,6 +60,10 @@ SORT_MAP = {
 
 
 def build_query(args) -> tuple[str, list]:
+    """@brief Build the SELECT SQL and parameter list from parsed CLI arguments.
+    @param args  argparse.Namespace with filter/sort attributes.
+    @return      (sql_string, params_list) ready for sqlite3.execute().
+    """
     where_parts = []
     params: list = []
 
@@ -112,17 +117,32 @@ def build_query(args) -> tuple[str, list]:
 
 
 def fmt_time(ts: str | None) -> str:
+    """@brief Format an ISO 8601 timestamp for table display (strip timezone, append 'Z').
+    @param ts  ISO string or None.
+    @return    19-character UTC string ending in 'Z', or '—'.
+    """
     if not ts:
         return "—"
     return ts.replace("T", " ").replace("+00:00", "Z")[:19] + "Z"
 
 
 def fmt(v, width: int, default="—") -> str:
+    """@brief Left-justify a value to a fixed column width, truncating if necessary.
+    @param v       Value to format (converted to str).
+    @param width   Target column width in characters.
+    @param default String to use when v is None.
+    @return        Left-justified string of exactly @p width characters.
+    """
     s = str(v) if v is not None else default
     return s[:width].ljust(width)
 
 
 def print_table(rows: list, db_path: str, args) -> None:
+    """@brief Print query results as a formatted ASCII table to stdout.
+    @param rows     Rows returned by sqlite3.execute().
+    @param db_path  Database path shown in the footer line.
+    @param args     Parsed CLI args (used to build the active-filter summary).
+    """
     H = ["Freq (MHz)", "BW(kHz)", "SNR", "Pwr(dBm)", "Modulation", "Flags", "First seen (UTC)", "Hits"]
     W = [11, 8, 6, 8, 18, 10, 20, 4]
 
@@ -158,6 +178,9 @@ def print_table(rows: list, db_path: str, args) -> None:
 
 
 def print_csv(rows: list) -> None:
+    """@brief Write query results to stdout as RFC 4180 CSV.
+    @param rows  Rows returned by sqlite3.execute().
+    """
     w = csv.writer(sys.stdout)
     w.writerow(["freq_mhz","bw_khz","snr_db","power_db","modulation",
                 "flags","first_seen","last_seen","hits"])
@@ -176,6 +199,10 @@ def print_csv(rows: list) -> None:
 
 
 def run_once(db_path: str, args) -> None:
+    """@brief Execute one query and print the results.
+    @param db_path  Path to the SQLite database.
+    @param args     Parsed CLI arguments (filters, sort, output format).
+    """
     if not Path(db_path).exists():
         print(f"No database at {db_path} — run scan.sh first")
         return
@@ -192,6 +219,7 @@ def run_once(db_path: str, args) -> None:
 
 
 def main() -> None:
+    """@brief Entry point: parse arguments and display signals from the database."""
     ap = argparse.ArgumentParser(
         description="Display signals from the SDR scan database",
         formatter_class=argparse.RawDescriptionHelpFormatter,

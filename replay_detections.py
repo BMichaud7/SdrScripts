@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-replay_detections.py — Replay unclassified signals from SQLite DB through AMQP.
+@file replay_detections.py
+@brief Replay unclassified signals from the SQLite DB back through the AMQP pipeline.
 
 Reads unclassified (or all) signals from the DB, publishes them to rf.detections
 one at a time with a configurable delay, and lets AnalysisApp classify them.
@@ -39,16 +40,26 @@ except ModuleNotFoundError:
 
 
 def open_db(path: str) -> sqlite3.Connection:
+    """@brief Open a SQLite database with row_factory set to sqlite3.Row.
+    @param path  Path to the @c .db file.
+    @return      Open sqlite3.Connection.
+    """
     db = sqlite3.connect(path, check_same_thread=False)
     db.row_factory = sqlite3.Row
     return db
 
 
 def fetch_signals(db: sqlite3.Connection, count: int, include_classified: bool) -> list[dict]:
+    """@brief Query signals for replay, ordered by power descending.
+    @param db                   Open database connection.
+    @param count                Maximum rows to return (0 = unlimited).
+    @param include_classified   When False, only unclassified rows are returned.
+    @return                     List of row dicts.
+    """
     where = "" if include_classified else "WHERE classified = 0"
     limit = f"LIMIT {count}" if count > 0 else ""
     rows = db.execute(f"""
-        SELECT id, freq_hz, bandwidth_hz, power_db, timestamp_ms, scanner_id
+        SELECT id, freq_hz, bandwidth_hz, power_db, snr_db, timestamp_ms, scanner_id
         FROM signals
         {where}
         ORDER BY power_db DESC
@@ -58,8 +69,23 @@ def fetch_signals(db: sqlite3.Connection, count: int, include_classified: bool) 
 
 
 class _Publisher(proton.handlers.MessagingHandler):
+    """@brief Proton MessagingHandler that publishes replay detections one by one.
+
+    Sends each signal as a JSON RF_DETECTION AMQP message to the configured topic,
+    spacing them by @p gap_sec seconds to give AnalysisApp time to classify each one.
+    Closes the connection after the last signal plus a 5-second drain window.
+    """
+
     def __init__(self, broker: str, user: str, password: str,
                  signals: list[dict], gap_sec: float, topic: str):
+        """@brief Construct the publisher.
+        @param broker   AMQP broker URL.
+        @param user     AMQP username.
+        @param password AMQP password.
+        @param signals  Rows from fetch_signals().
+        @param gap_sec  Seconds to wait between each published signal.
+        @param topic    AMQP topic address (e.g. "rf.detections").
+        """
         super().__init__()
         self._broker   = broker
         self._user     = user
@@ -71,6 +97,7 @@ class _Publisher(proton.handlers.MessagingHandler):
         self._sender   = None
 
     def on_start(self, ev):
+        """@brief Connect to the broker and open a sender to the detection topic."""
         conn = ev.container.connect(
             self._broker, user=self._user, password=self._password,
             sasl_enabled=True, allowed_mechs="PLAIN",
@@ -78,6 +105,7 @@ class _Publisher(proton.handlers.MessagingHandler):
         self._sender = ev.container.create_sender(conn, self._topic)
 
     def on_sendable(self, ev):
+        """@brief Send the next signal when the sender has credit, then schedule the gap timer."""
         if self._idx >= len(self._signals):
             ev.connection.close()
             return
@@ -85,15 +113,19 @@ class _Publisher(proton.handlers.MessagingHandler):
             return
 
         sig = self._signals[self._idx]
-        # Build an RF_DETECTION message matching AnalysisApp's expected format
-        msg_body = json.dumps({
-            "msg_type":       "RF_DETECTION",
-            "scanner_id":     sig.get("scanner_id") or "replay",
-            "center_freq_hz": sig["freq_hz"],
-            "bandwidth_hz":   sig["bandwidth_hz"] or 200_000,
-            "power_db":       sig["power_db"] or -60.0,
-            "timestamp_ms":   sig["timestamp_ms"] or int(time.time() * 1000),
-        })
+        body: dict = {
+            "msg_type":                "RF_DETECTION",
+            "schema_version":          "1.2",
+            "scanner_id":              sig.get("scanner_id") or "replay",
+            "center_freq_hz":          sig["freq_hz"],
+            "bandwidth_hz":            sig["bandwidth_hz"] or 200_000,
+            "power_db":                sig["power_db"] or -60.0,
+            "timestamp_ms":            sig["timestamp_ms"] or int(time.time() * 1000),
+            "snapshot_sample_rate_sps": 20_000_000,
+        }
+        if sig.get("snr_db") is not None:
+            body["snr_db"] = sig["snr_db"]
+        msg_body = json.dumps(body)
 
         m = proton.Message()
         m.body = msg_body
@@ -113,6 +145,7 @@ class _Publisher(proton.handlers.MessagingHandler):
             ev.container.schedule(self._gap + 5, self)
 
     def on_timer_task(self, ev):
+        """@brief Timer callback: fire the next send after the gap interval."""
         self.on_sendable(ev)
 
     def on_transport_error(self, ev):
@@ -123,6 +156,7 @@ class _Publisher(proton.handlers.MessagingHandler):
 
 
 def main():
+    """@brief Entry point: load signals from the DB and replay them through AMQP."""
     ap = argparse.ArgumentParser(description="Replay SDR signals for batch classification")
     ap.add_argument("--db",     default="signals.db")
     ap.add_argument("--broker", default="amqp://localhost:5672")

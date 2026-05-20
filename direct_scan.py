@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-direct_scan.py — PlutoSDR sweep scanner via libiio ctypes.
+@file direct_scan.py
+@brief Standalone PlutoSDR sweep scanner via libiio ctypes (no AMQP / SdrResourceManager).
 
 Tunes the AD9361 across 80–3000 MHz, captures IQ, runs FFT,
 detects peaks above noise floor, writes results to SQLite.
@@ -36,6 +37,7 @@ MIN_BW_HZ    = 8_000           # ignore narrower blobs
 _lib = ctypes.CDLL("libiio.so.1")
 
 def _setup_api():
+    """@brief Wire ctypes argtypes/restype for every libiio function used by PlutoScanner."""
     p = ctypes.c_void_p
     ll = ctypes.c_longlong
     sz = ctypes.c_size_t
@@ -84,7 +86,20 @@ _setup_api()
 
 
 class PlutoScanner:
+    """@brief Direct PlutoSDR IQ capture using libiio over the network context.
+
+    Connects to the PlutoSDR at @p ip, configures the AD9361 RF front end,
+    and exposes tune() + capture_iq() for stepped frequency sweeps.
+    No SoapySDR or SdrResourceManager dependency — use for offline testing
+    or when the full stack is not available.
+    """
+
     def __init__(self, ip: str, gain_db: int):
+        """@brief Connect to the PlutoSDR and configure the AD9361.
+        @param ip       IP address of the PlutoSDR (e.g. "192.168.1.253").
+        @param gain_db  RX hardware gain in dB (manual mode).
+        @throws RuntimeError if the device cannot be reached or channels not found.
+        """
         self._ctx = _lib.iio_create_network_context(ip.encode())
         if not self._ctx:
             raise RuntimeError(f"Cannot connect to PlutoSDR at {ip}")
@@ -113,10 +128,16 @@ class PlutoScanner:
             raise RuntimeError("Cannot create IQ buffer")
 
     def tune(self, freq_hz: int):
+        """@brief Retune the AD9361 LO and wait for the settle time.
+        @param freq_hz  Target LO frequency (Hz).
+        """
         _lib.iio_channel_attr_write_longlong(self._rx_lo, b"frequency", freq_hz)
         time.sleep(SETTLE_S)
 
     def capture_iq(self) -> np.ndarray:
+        """@brief Refill the IQ buffer and return samples as complex64.
+        @return  numpy array of shape (BUF_SAMPLES,) dtype complex64, or empty array on error.
+        """
         ret = _lib.iio_buffer_refill(self._buf)
         if ret < 0:
             return np.array([], dtype=np.complex64)
@@ -132,6 +153,7 @@ class PlutoScanner:
         return (iq[:, 0] + 1j * iq[:, 1]).astype(np.complex64)
 
     def close(self):
+        """@brief Destroy the IQ buffer and free the libiio context."""
         if self._buf:
             _lib.iio_buffer_destroy(self._buf)
         if self._ctx:
@@ -141,6 +163,12 @@ class PlutoScanner:
 # ── Signal detection ──────────────────────────────────────────────────────────
 
 def detect_peaks(iq: np.ndarray, center_hz: int) -> list[dict]:
+    """@brief Detect signal peaks in an IQ block using Welch PSD and median thresholding.
+    @param iq         Complex64 IQ samples from PlutoScanner.capture_iq().
+    @param center_hz  LO centre frequency used when the samples were captured (Hz).
+    @return           List of dicts with keys: freq_hz, bandwidth_hz, power_db, snr_db.
+                      Empty list when fewer than FFT_SIZE samples provided.
+    """
     if len(iq) < FFT_SIZE:
         return []
 
@@ -218,6 +246,10 @@ DEDUP_SEC = 600
 
 
 def open_db(path: str) -> sqlite3.Connection:
+    """@brief Open (or create) the signals SQLite database and apply the schema.
+    @param path  File path for the SQLite database.
+    @return      Open sqlite3.Connection in WAL mode.
+    """
     db = sqlite3.connect(path)
     db.execute("PRAGMA journal_mode=WAL")
     db.executescript(SCHEMA)
@@ -226,6 +258,12 @@ def open_db(path: str) -> sqlite3.Connection:
 
 
 def upsert_signal(db: sqlite3.Connection, sig: dict, recent: dict) -> dict:
+    """@brief Insert a new signal or increment the hit counter for a recent duplicate.
+    @param db      Open database connection.
+    @param sig     Signal dict with keys: freq_hz, bandwidth_hz, power_db, snr_db.
+    @param recent  In-memory dedup cache: {freq_hz: (timestamp_ms, row_id)}.
+    @return        Updated @p recent dict.
+    """
     freq  = sig["freq_hz"]
     ts_ms = int(time.time() * 1000)
     iso   = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -250,6 +288,7 @@ def upsert_signal(db: sqlite3.Connection, sig: dict, recent: dict) -> dict:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    """@brief Entry point: parse arguments and run the PlutoSDR sweep loop."""
     ap = argparse.ArgumentParser(description="Direct PlutoSDR sweep scanner")
     ap.add_argument("--start",  type=int, default=80,   help="Start MHz")
     ap.add_argument("--stop",   type=int, default=3000, help="Stop MHz")
