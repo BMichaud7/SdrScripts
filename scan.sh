@@ -56,9 +56,15 @@ ANALYSIS_ONNX_IMAGE="sdr-analysis:hw-onnx"
 
 DEVICES_XML="$HW_TEST_DIR/devices-direct.xml"
 ARTEMIS_CTR="sdr-artemis"
+POSTGRES_CTR="sdr-postgres"
 CONTROLLER_CTR="sdr-controller"
 ACQUISITION_CTR="sdr-acquisition"
 ANALYSIS_CTR="sdr-analysis"
+
+PG_USER="sdr"
+PG_PASS="sdr_hw_test"
+PG_DB="sdr_scanner"
+PG_DATA_DIR="$SCRIPT_DIR/.pgdata"
 
 PROTON_PATH="${PROTON_PATH:-/tmp/proton_pkg}"
 
@@ -258,7 +264,7 @@ cleanup() {
     echo ""
     info "Shutting down …"
     [[ -n "$LOGGER_PID" ]] && kill "$LOGGER_PID" 2>/dev/null || true
-    for ctr in "$ANALYSIS_CTR" "$ACQUISITION_CTR" "$CONTROLLER_CTR" "$ARTEMIS_CTR"; do
+    for ctr in "$ANALYSIS_CTR" "$ACQUISITION_CTR" "$CONTROLLER_CTR" "$ARTEMIS_CTR" "$POSTGRES_CTR"; do
         is_running "$ctr" && podman stop "$ctr" >/dev/null 2>&1 && info "Stopped $ctr" || true
     done
     ok "All services stopped"
@@ -277,7 +283,33 @@ info "Analysis pause: $( [[ "$ANALYSIS_PAUSE_MS" -gt 0 ]] && echo "${ANALYSIS_PA
 info "Database: $DB_PATH"
 echo ""
 
-# 1. Broker
+# 1. PostgreSQL
+if ! is_running "$POSTGRES_CTR"; then
+    info "Starting PostgreSQL …"
+    mkdir -p "$PG_DATA_DIR"
+    podman run -d --rm --name "$POSTGRES_CTR" --network=host \
+        -e POSTGRES_USER="$PG_USER" \
+        -e POSTGRES_PASSWORD="$PG_PASS" \
+        -e POSTGRES_DB="$PG_DB" \
+        -e PGDATA=/var/lib/postgresql/data \
+        -v "$PG_DATA_DIR:/var/lib/postgresql/data:z" \
+        docker.io/postgres:16-alpine >/dev/null
+    # Wait for ready (up to 30s)
+    for i in $(seq 1 30); do
+        podman exec "$POSTGRES_CTR" pg_isready -U "$PG_USER" -d "$PG_DB" 2>/dev/null && break
+        sleep 1
+    done
+    # Apply schemas (IF NOT EXISTS — safe to re-run)
+    podman exec -i "$POSTGRES_CTR" psql -U "$PG_USER" -d "$PG_DB" \
+        < "$SCRIPT_DIR/../AcquisitionApp/schema/init.sql" >/dev/null
+    podman exec -i "$POSTGRES_CTR" psql -U "$PG_USER" -d "$PG_DB" \
+        < "$SCRIPT_DIR/../AnalysisApp/schema/init.sql" >/dev/null
+    ok "PostgreSQL ready"
+else
+    ok "PostgreSQL already running"
+fi
+
+# 2. Broker
 if ! is_running "$ARTEMIS_CTR"; then
     info "Starting Artemis broker …"
     podman run -d --rm --name "$ARTEMIS_CTR" --network=host \
@@ -289,7 +321,7 @@ else
     ok "Broker already running"
 fi
 
-# 2. Controller — always restart to clear any stale device allocations
+# 3. Controller — always restart to clear any stale device allocations
 [[ -f "$DEVICES_XML" ]] || die "No devices.xml at $DEVICES_XML"
 if is_running "$CONTROLLER_CTR"; then
     info "Restarting SdrResourceManager (clearing stale allocations) …"
@@ -303,7 +335,7 @@ sleep 3
 is_running "$CONTROLLER_CTR" || die "Controller failed to start"
 ok "Controller running"
 
-# 3. Signal logger — start BEFORE AcquisitionApp so it doesn't miss the first sweep
+# 4. Signal logger — start BEFORE AcquisitionApp so it doesn't miss the first sweep
 info "Starting signal_logger (→ $DB_PATH) …"
 PYTHONPATH="$PROTON_PATH" python3 "$SCRIPT_DIR/signal_logger.py" \
     --db "$DB_PATH" --broker "$BROKER_URL" \
@@ -312,7 +344,7 @@ LOGGER_PID=$!
 ok "Signal logger PID=$LOGGER_PID"
 sleep 4   # give logger time to connect to AMQP before acquisition starts
 
-# 4. AcquisitionApp
+# 5. AcquisitionApp
 info "Starting AcquisitionApp (${START_MHZ}–${STOP_MHZ} MHz) …"
 mkdir -p "$SCRIPT_DIR/.cache"
 podman run -d --rm --replace --name "$ACQUISITION_CTR" --network=host \
@@ -324,7 +356,7 @@ sleep 3
 is_running "$ACQUISITION_CTR" || die "AcquisitionApp failed to start"
 ok "AcquisitionApp running"
 
-# 5. AnalysisApp (optional)
+# 6. AnalysisApp (optional)
 if [[ "$NO_ANALYSIS" == "false" ]]; then
     info "Starting AnalysisApp ($FINAL_ANALYSIS_IMAGE) …"
     ANALYSIS_RUN_ARGS=(-d --rm --replace --name "$ANALYSIS_CTR" --network=host
