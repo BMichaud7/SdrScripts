@@ -145,12 +145,10 @@ class _PgBackend:
     def __init__(self, host: str, port: int, dbname: str, user: str, password: str):
         try:
             import psycopg2
-            import psycopg2.extras
-            self._psycopg2 = psycopg2
         except ImportError:
-            print("[signal_logger] ERROR: psycopg2 not installed. "
-                  "pip install psycopg2-binary", file=sys.stderr)
-            sys.exit(1)
+            raise RuntimeError(
+                "psycopg2 not installed — run: pip install psycopg2-binary"
+            )
         dsn = f"host={host} port={port} dbname={dbname} user={user} password={password}"
         self._conn  = psycopg2.connect(dsn)
         self._conn.autocommit = False
@@ -400,10 +398,15 @@ def main() -> None:
     print(f"[signal_logger] Backend: SQLite {args.db}")
 
     if args.pg_host:
-        pg_backend = _PgBackend(args.pg_host, args.pg_port, args.pg_db,
-                                args.pg_user, args.pg_pass)
-        print(f"[signal_logger] Backend: PostgreSQL {args.pg_host}/{args.pg_db} (dual-write)")
-        backend = _DualBackend(primary=pg_backend, secondary=sqlite_backend)
+        try:
+            pg_backend = _PgBackend(args.pg_host, args.pg_port, args.pg_db,
+                                    args.pg_user, args.pg_pass)
+            print(f"[signal_logger] Backend: PostgreSQL {args.pg_host}/{args.pg_db} (dual-write)")
+            backend = _DualBackend(primary=pg_backend, secondary=sqlite_backend)
+        except RuntimeError as e:
+            print(f"[signal_logger] WARNING: {e} — falling back to SQLite only",
+                  file=sys.stderr)
+            backend = sqlite_backend
     else:
         backend = sqlite_backend
 
