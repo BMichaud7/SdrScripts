@@ -1,0 +1,127 @@
+# ════════════════════════════════════════════════════════════════════════
+#  signal-logger — Kubernetes / k3s Deployment
+#
+#  Subscribes to rf.detections + rf.analysis and writes deduplicated
+#  signals to PostgreSQL (or SQLite in local mode).
+#
+#  Apply:
+#    kubectl apply -f deploy/k8s/deployment.yaml
+# ════════════════════════════════════════════════════════════════════════
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: signal-logger
+  namespace: sdr-system
+  labels:
+    app: signal-logger
+    version: "1.0.0"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # one logger at a time to avoid duplicate inserts
+  selector:
+    matchLabels:
+      app: signal-logger
+  template:
+    metadata:
+      labels:
+        app: signal-logger
+        version: "1.0.0"
+    spec:
+      terminationGracePeriodSeconds: 15
+
+      containers:
+        - name: signal-logger
+          image: ghcr.io/bmichaud7/signal-logger:1.0.0
+          imagePullPolicy: Always
+
+          args:
+            - "--broker"
+            - "amqp://activemq-service.sdr-system.svc.cluster.local:5672"
+            - "--user"
+            - "sdr_ctrl"
+            - "--pass"
+            - "$(AMQP_PASSWORD)"
+            - "--pg-host"
+            - "postgres-service.sdr-system.svc.cluster.local"
+            - "--pg-user"
+            - "$(PG_USER)"
+            - "--pg-pass"
+            - "$(PG_PASS)"
+
+          env:
+            - name: AMQP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sdr-credentials
+                  key: amqp-password
+            - name: PG_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sdr-credentials
+                  key: db-username
+            - name: PG_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: sdr-credentials
+                  key: db-password
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: signal-logger-netpol
+  namespace: sdr-system
+spec:
+  podSelector:
+    matchLabels:
+      app: signal-logger
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: activemq
+      ports:
+        - port: 5672
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
