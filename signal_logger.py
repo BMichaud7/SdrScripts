@@ -201,6 +201,44 @@ class _PgBackend:
         self._conn.close()
 
 
+class _DualBackend:
+    """Write to two backends simultaneously. Errors in the secondary are logged, not fatal."""
+    def __init__(self, primary, secondary):
+        self._p = primary
+        self._s = secondary
+
+    def insert(self, row: dict) -> int:
+        try:
+            self._s.insert(row)
+        except Exception as e:
+            print(f"[signal_logger] secondary insert error: {e}", file=sys.stderr)
+        return self._p.insert(row)
+
+    def update_hit(self, row_id: int, iso: str):
+        try:
+            self._s.update_hit(row_id, iso)
+        except Exception as e:
+            print(f"[signal_logger] secondary update_hit error: {e}", file=sys.stderr)
+        self._p.update_hit(row_id, iso)
+
+    def update_analysis(self, row_id: int, row: dict):
+        try:
+            self._s.update_analysis(row_id, row)
+        except Exception as e:
+            print(f"[signal_logger] secondary update_analysis error: {e}", file=sys.stderr)
+        self._p.update_analysis(row_id, row)
+
+    def count(self) -> int:
+        return self._p.count()
+
+    def close(self):
+        self._p.close()
+        try:
+            self._s.close()
+        except Exception:
+            pass
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -358,13 +396,16 @@ def main() -> None:
     ap.add_argument("--pg-pass",  default=os.environ.get("PG_PASS", ""))
     args = ap.parse_args()
 
+    sqlite_backend = _SqliteBackend(args.db)
+    print(f"[signal_logger] Backend: SQLite {args.db}")
+
     if args.pg_host:
-        backend = _PgBackend(args.pg_host, args.pg_port, args.pg_db,
-                             args.pg_user, args.pg_pass)
-        print(f"[signal_logger] Backend: PostgreSQL {args.pg_host}/{args.pg_db}")
+        pg_backend = _PgBackend(args.pg_host, args.pg_port, args.pg_db,
+                                args.pg_user, args.pg_pass)
+        print(f"[signal_logger] Backend: PostgreSQL {args.pg_host}/{args.pg_db} (dual-write)")
+        backend = _DualBackend(primary=pg_backend, secondary=sqlite_backend)
     else:
-        backend = _SqliteBackend(args.db)
-        print(f"[signal_logger] Backend: SQLite {args.db}")
+        backend = sqlite_backend
 
     stop = threading.Event()
     print(f"[signal_logger] Broker: {args.broker}")
