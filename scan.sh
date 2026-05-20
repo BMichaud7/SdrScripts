@@ -336,10 +336,13 @@ is_running "$CONTROLLER_CTR" || die "Controller failed to start"
 ok "Controller running"
 
 # 4. Signal logger — start BEFORE AcquisitionApp so it doesn't miss the first sweep
-info "Starting signal_logger (→ $DB_PATH) …"
+# Use the PostgreSQL backend (postgres container started in step 1) so signals
+# land in both postgres (queryable via psql/Grafana) and the local SQLite file.
+info "Starting signal_logger (→ $DB_PATH + postgres) …"
 PYTHONPATH="$PROTON_PATH" python3 "$SCRIPT_DIR/signal_logger.py" \
     --db "$DB_PATH" --broker "$BROKER_URL" \
-    --user "$BROKER_USER" --pass "$BROKER_PASS" &
+    --user "$BROKER_USER" --pass "$BROKER_PASS" \
+    --pg-host localhost --pg-user "$PG_USER" --pg-pass "$PG_PASS" &
 LOGGER_PID=$!
 ok "Signal logger PID=$LOGGER_PID"
 sleep 4   # give logger time to connect to AMQP before acquisition starts
