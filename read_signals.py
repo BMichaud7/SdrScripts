@@ -47,8 +47,8 @@ BANDS: dict[str, tuple[float, float]] = {
 SORT_MAP = {
     "freq":      "freq_hz ASC",
     "frequency": "freq_hz ASC",
-    "time":      "timestamp_ms ASC",
-    "first":     "timestamp_ms ASC",
+    "time":      "first_seen ASC",
+    "first":     "first_seen ASC",
     "last":      "last_seen DESC",
     "power":     "power_db DESC",
     "snr":       "snr_db DESC",
@@ -68,9 +68,11 @@ def build_query(args) -> tuple[str, list]:
     params: list = []
 
     if args.recent:
-        cutoff_ms = int((time.time() - args.recent * 60) * 1000)
-        where_parts.append("timestamp_ms >= ?")
-        params.append(cutoff_ms)
+        cutoff_iso = time.strftime(
+            "%Y-%m-%dT%H:%M:%S+00:00",
+            time.gmtime(time.time() - args.recent * 60))
+        where_parts.append("last_seen >= ?")
+        params.append(cutoff_iso)
 
     if args.classified:
         where_parts.append("classified = 1")

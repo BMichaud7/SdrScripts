@@ -49,9 +49,11 @@ def main() -> None:
     if args.all:
         action = f"DELETE THE FILE {db_path}"
     elif args.older_hours is not None:
-        cutoff_ms = int((time.time() - args.older_hours * 3600) * 1000)
+        cutoff_iso = time.strftime(
+            "%Y-%m-%dT%H:%M:%S+00:00",
+            time.gmtime(time.time() - args.older_hours * 3600))
         old = db.execute(
-            "SELECT COUNT(*) FROM signals WHERE timestamp_ms < ?", (cutoff_ms,)
+            "SELECT COUNT(*) FROM signals WHERE last_seen < ?", (cutoff_iso,)
         ).fetchone()[0]
         action = f"delete {old} records older than {args.older_hours:.0f}h"
     else:
@@ -71,7 +73,7 @@ def main() -> None:
         db_path.unlink()
         print(f"Deleted {db_path}")
     elif args.older_hours is not None:
-        db.execute("DELETE FROM signals WHERE timestamp_ms < ?", (cutoff_ms,))
+        db.execute("DELETE FROM signals WHERE last_seen < ?", (cutoff_iso,))
         db.commit()
         db.execute("VACUUM")
         remaining = db.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
