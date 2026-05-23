@@ -145,8 +145,8 @@ def print_table(rows: list, db_path: str, args) -> None:
     @param db_path  Database path shown in the footer line.
     @param args     Parsed CLI args (used to build the active-filter summary).
     """
-    H = ["Freq (MHz)", "BW(kHz)", "SNR", "Pwr(dBm)", "Modulation", "Flags", "First seen (UTC)", "Hits"]
-    W = [11, 8, 6, 8, 18, 10, 20, 4]
+    H = ["Freq (MHz)", "BW(kHz)", "SNR(dB)", "Modulation", "Flags", "First seen (UTC)", "Hits"]
+    W = [11, 8, 8, 18, 10, 20, 4]
 
     header = "  " + "  ".join(h.ljust(w) for h, w in zip(H, W))
     sep    = "  " + "─" * (sum(W) + 2 * len(W))
@@ -160,7 +160,6 @@ def print_table(rows: list, db_path: str, args) -> None:
             f"{freq:.3f}" if freq else "—",
             f"{bw:.1f}"   if bw   else "—",
             f"{snr:.1f}"  if snr  else "—",
-            f"{pwr:.1f}"  if pwr  else "—",
             mod or "—",
             (flags or "").strip(),
             fmt_time(first),

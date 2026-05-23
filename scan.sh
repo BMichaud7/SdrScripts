@@ -54,7 +54,7 @@ ACQUISITION_IMAGE="sdr-acquisition:hw-test"
 ANALYSIS_IMAGE="sdr-analysis:hw-test"
 ANALYSIS_ONNX_IMAGE="sdr-analysis:hw-onnx"
 
-DEVICES_XML="$HW_TEST_DIR/devices-direct.xml"
+DEVICES_XML="$HW_TEST_DIR/devices-direct-eth.xml"
 ARTEMIS_CTR="sdr-artemis"
 POSTGRES_CTR="sdr-postgres"
 CONTROLLER_CTR="sdr-controller"
@@ -196,16 +196,22 @@ if [[ "$USE_ONNX" == "true" ]]; then
     <onnx>
       <model_path>/models/modulation_classifier.onnx</model_path>
       <classes_path>/models/classes.json</classes_path>
-      <input_len>1024</input_len>
-      <!-- use_tensorrt: try TensorRT EP first (3× faster on RTX); falls back to CUDA EP -->
-      <use_gpu>true</use_gpu>
-      <use_tensorrt>true</use_tensorrt>
-      <tensorrt_fp16>true</tensorrt_fp16>
-      <tensorrt_cache_mb>128</tensorrt_cache_mb>
+      <input_len>512</input_len>
+      <use_gpu>false</use_gpu>
       <max_batch>8</max_batch>
       <fallback_confidence_threshold>0.60</fallback_confidence_threshold>
       <fallback_on_unknown>true</fallback_on_unknown>
-    </onnx>"
+    </onnx>
+    <snr_model_split_db>8.0</snr_model_split_db>
+    <onnx_low_snr>
+      <model_path>/models/amr_low_snr_denoised.onnx</model_path>
+      <classes_path>/models/classes.json</classes_path>
+      <input_len>512</input_len>
+      <use_gpu>false</use_gpu>
+      <max_batch>8</max_batch>
+      <fallback_confidence_threshold>0.45</fallback_confidence_threshold>
+      <fallback_on_unknown>true</fallback_on_unknown>
+    </onnx_low_snr>"
     FINAL_ANALYSIS_IMAGE="$ANALYSIS_ONNX_IMAGE"
 else
     ONNX_BLOCK=""
@@ -240,7 +246,7 @@ cat > "$ANALYSIS_CFG" << XML
   <engine>
     <fft_size>4096</fft_size>
     <snr_threshold_db>5.0</snr_threshold_db>
-    <rank>1</rank>
+    <rank>2</rank>
     ${ONNX_BLOCK}
   </engine>
 </sdr_analysis>
