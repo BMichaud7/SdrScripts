@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AnalysisApp config with ONNX RadioCNN classifier (28-class AMR) -->
+<sdr_analysis>
+  <scanner_id>analysis-hw-0</scanner_id>
+  <streaming_ip>127.0.0.1</streaming_ip>
+
+  <amqp>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <detections_topic>rf.detections</detections_topic>
+    <analysis_topic>rf.analysis</analysis_topic>
+    <task_request_queue>sdr.task.request</task_request_queue>
+    <task_response_queue>sdr.task.response</task_response_queue>
+  </amqp>
+
+  <collector>
+    <analysis_sample_rate_sps>2000000</analysis_sample_rate_sps>
+    <collect_samples>200000</collect_samples>
+    <analysis_timeout_ms>60000</analysis_timeout_ms>
+  </collector>
+
+  <engine>
+    <fft_size>4096</fft_size>
+    <snr_threshold_db>5.0</snr_threshold_db>
+    <rank>2</rank>
+    <onnx>
+      <model_path>/models/amr_cnn_28class.onnx</model_path>
+      <classes_path>/models/amr_cnn_28class.classes.json</classes_path>
+      <input_len>512</input_len>
+      <use_gpu>false</use_gpu>
+      <fallback_confidence_threshold>0.60</fallback_confidence_threshold>
+      <fallback_on_unknown>true</fallback_on_unknown>
+    </onnx>
+  </engine>
+</sdr_analysis>

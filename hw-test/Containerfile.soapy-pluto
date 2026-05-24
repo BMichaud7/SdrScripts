@@ -1,0 +1,109 @@
+# ============================================================================
+#  soapy-pluto — SoapySDRServer with PlutoSDR/AD936x hardware support
+#
+#  Builds libiio v1.0 from source (Ubuntu 24.04 apt ships 0.25 which can't
+#  talk to iiod 0.26 running on the PlutoSDR tezuka firmware).
+#
+#  Build:
+#    podman build -t soapy-pluto:1.0 -f hw-test/Containerfile.soapy-pluto .
+#
+#  Run:
+#    podman run --rm --network=host -e PLUTO_IP=192.168.1.253 soapy-pluto:1.0
+# ============================================================================
+
+FROM ubuntu:24.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y \
+    build-essential cmake pkg-config git ca-certificates flex bison \
+    libusb-1.0-0-dev libxml2-dev libaio-dev libserialport-dev \
+    libavahi-client-dev \
+    libsoapysdr-dev \
+    && apt-get clean
+
+# ── libiio v1.0 (from source — apt ships 0.25 which fails with iiod 0.26) ──
+RUN git clone --depth 1 --branch v0.26 \
+        https://github.com/analogdevicesinc/libiio.git /build/libiio && \
+    cmake -S /build/libiio -B /build/libiio/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DWITH_USB_BACKEND=OFF \
+        -DWITH_SERIAL_BACKEND=OFF \
+        -DWITH_NETWORK_BACKEND=ON \
+        -DWITH_LOCAL_BACKEND=OFF \
+        -DHAVE_DNS_SD=ON \
+        -DWITH_IIOD=OFF && \
+    cmake --build /build/libiio/build --parallel "$(nproc)" && \
+    cmake --install /build/libiio/build && \
+    rm -rf /build/libiio
+
+# ── libad9361 ────────────────────────────────────────────────────────────────
+RUN git clone --depth 1 \
+        https://github.com/analogdevicesinc/libad9361-iio.git /build/libad9361 && \
+    cmake -S /build/libad9361 -B /build/libad9361/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_PREFIX_PATH=/usr/local && \
+    cmake --build /build/libad9361/build --parallel "$(nproc)" && \
+    cmake --install /build/libad9361/build && \
+    rm -rf /build/libad9361
+
+RUN ldconfig /usr/local/lib
+
+# ── SoapyPlutoSDR (patched: PLUTO_IP env var → hostname fallback) ────────────
+RUN git clone --depth 1 \
+        https://github.com/pothosware/SoapyPlutoSDR.git /build/SoapyPlutoSDR
+COPY hw-test/PlutoSDR_Registration.cpp /build/SoapyPlutoSDR/PlutoSDR_Registration.cpp
+RUN cmake -S /build/SoapyPlutoSDR -B /build/SoapyPlutoSDR/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_PREFIX_PATH=/usr/local \
+        -DLibIIO_INCLUDE_DIR=/usr/local/include && \
+    cmake --build /build/SoapyPlutoSDR/build --parallel "$(nproc)" && \
+    cmake --install /build/SoapyPlutoSDR/build && \
+    rm -rf /build/SoapyPlutoSDR
+
+# ── SoapyRemote ──────────────────────────────────────────────────────────────
+RUN git clone --depth 1 \
+        https://github.com/pothosware/SoapyRemote.git /build/SoapyRemote && \
+    cmake -S /build/SoapyRemote -B /build/SoapyRemote/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DENABLE_AVAHI=OFF && \
+    cmake --build /build/SoapyRemote/build --parallel "$(nproc)" && \
+    cmake --install /build/SoapyRemote/build && \
+    rm -rf /build/SoapyRemote
+
+RUN ldconfig /usr/local/lib
+
+# ── Smoke test ───────────────────────────────────────────────────────────────
+RUN SoapySDRUtil --info 2>&1 | grep -i "pluto\|PlutoSDR" || true
+
+# ── Runtime ──────────────────────────────────────────────────────────────────
+FROM ubuntu:24.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    libusb-1.0-0 libxml2 libaio-dev \
+    libsoapysdr0.8 soapysdr-tools \
+    && apt-get clean \
+    && rm -f /usr/lib/x86_64-linux-gnu/SoapySDR/modules0.8/libremoteSupport.so
+
+COPY --from=builder /usr/local/lib/   /usr/local/lib/
+COPY --from=builder /usr/local/bin/   /usr/local/bin/
+COPY --from=builder /usr/local/include/ /usr/local/include/
+
+RUN echo /usr/local/lib > /etc/ld.so.conf.d/local.conf && ldconfig
+
+ENV PLUTO_IP=192.168.1.253
+ENV SOAPY_SDR_PLUGIN_PATH=/usr/local/lib/SoapySDR/modules0.8
+EXPOSE 55132
+
+CMD ["sh", "-c", \
+     "echo 'Probing PlutoSDR at '${PLUTO_IP}' ...' && \
+      IIOD_REMOTE=${PLUTO_IP} SoapySDRUtil --find 'driver=plutosdr' 2>&1 | grep -Ev 'ALSA|RtApi|UHD|confmisc|snd_|Pulse'; \
+      echo '--- Starting SoapySDRServer on :55132 ---' && \
+      export IIOD_REMOTE=${PLUTO_IP} && exec SoapySDRServer --bind 0.0.0.0:55132"]

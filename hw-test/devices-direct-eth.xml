@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SdrResourceManager hardware-test config — direct PlutoSDR via Ethernet -->
+<sdr_controller version="2.0">
+
+  <broker>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <request_queue>sdr.task.request</request_queue>
+    <response_queue>sdr.task.response</response_queue>
+    <status_topic>sdr.status</status_topic>
+    <health_topic>sdr.health</health_topic>
+    <reconnect_interval_sec>5</reconnect_interval_sec>
+    <max_reconnect_interval_sec>30</max_reconnect_interval_sec>
+    <send_queue_depth>512</send_queue_depth>
+  </broker>
+
+  <policy>
+    <max_concurrent_tasks>4</max_concurrent_tasks>
+    <guard_band_hz>200000</guard_band_hz>
+    <usable_bw_fraction>0.80</usable_bw_fraction>
+    <default_task_timeout_ms>120000</default_task_timeout_ms>
+    <scheduler_tick_ms>200</scheduler_tick_ms>
+    <watchdog_tick_ms>1000</watchdog_tick_ms>
+    <udp_port_pool_start>31000</udp_port_pool_start>
+    <udp_port_pool_end>31099</udp_port_pool_end>
+    <iq_packet_samples>256</iq_packet_samples>
+    <retune_conflict_policy>REJECT_NEW</retune_conflict_policy>
+    <heartbeat_interval_ms>10000</heartbeat_interval_ms>
+  </policy>
+
+  <devices>
+    <!-- Direct PlutoSDR access via SoapyPlutoSDR + libiio over Ethernet (no SoapyRemote) -->
+    <device id="pluto-0">
+      <driver>plutosdr</driver>
+      <uri>ip:192.168.1.253</uri>
+      <label>PlutoSDR sdr-0 (direct libiio ip:192.168.1.253)</label>
+      <streaming_source_ip>127.0.0.1</streaming_source_ip>
+      <coherency_group>refclk-group-0</coherency_group>
+      <shared_lo>true</shared_lo>
+      <!-- Lock hardware SR — eliminates 3-4 s AD9361 recal on every task hop.
+           Pure LO retune via setFrequency settles in ~25 µs on the AD9361.
+           Tasks requesting a different rate are served at this rate; consumers
+           decimate in software.  2 MSPS covers the full scan bandwidth. -->
+      <fixed_sample_rate_hz>2000000</fixed_sample_rate_hz>
+      <capabilities>
+        <rx_channels>2</rx_channels>
+        <tx_channels>2</tx_channels>
+        <freq_min_hz>70000000</freq_min_hz>
+        <freq_max_hz>6000000000</freq_max_hz>
+        <bandwidth_max_hz>56000000</bandwidth_max_hz>
+        <sample_rate_max_sps>61440000</sample_rate_max_sps>
+        <rx_gain_min_db>-3</rx_gain_min_db>
+        <rx_gain_max_db>71</rx_gain_max_db>
+        <tx_atten_min_db>0</tx_atten_min_db>
+        <tx_atten_max_db>89</tx_atten_max_db>
+      </capabilities>
+    </device>
+  </devices>
+
+</sdr_controller>

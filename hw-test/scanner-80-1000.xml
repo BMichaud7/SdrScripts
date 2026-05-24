@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AcquisitionApp hardware-test config — real RF sweep 400 MHz – 2 GHz -->
+<sdr_acquisition version="2.0">
+
+  <scanner_id>scanner-hw-0</scanner_id>
+
+  <amqp>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <detection_topic>rf.detections</detection_topic>
+    <task_request_queue>sdr.task.request</task_request_queue>
+    <task_response_queue>sdr.task.response</task_response_queue>
+    <reconnect_interval_sec>5</reconnect_interval_sec>
+  </amqp>
+
+  <!-- PostgreSQL optional — omit or leave as-is if not installed -->
+  <database>
+    <host>localhost</host>
+    <port>5432</port>
+    <name>sdr_scanner</name>
+    <user>sdr</user>
+    <password>sdr_hw_test</password>
+  </database>
+
+  <device>
+    <rx_channels>1</rx_channels>
+    <sample_rate_sps>10000000</sample_rate_sps>
+    <rx_gain_db>50</rx_gain_db>
+    <bandwidth_hz>8000000</bandwidth_hz>  <!-- 8 MHz BW fits in 10 MSPS window with guard bands -->
+  </device>
+
+  <!-- 400 MHz – 2 GHz covers FM broadcast, cellular, WiFi, amateur bands -->
+  <sweep>
+    <start_hz>80000000</start_hz>
+    <stop_hz>1000000000</stop_hz>
+    <dwell_samples>1048576</dwell_samples>  <!-- 1M samples = ~100ms at 10MSPS -->
+    <fft_size>4096</fft_size>
+    <usable_bw_fraction>0.85</usable_bw_fraction>
+    <threshold_db>3.0</threshold_db>  <!-- lowered for testing -->
+    <min_signal_bw_hz>1000</min_signal_bw_hz>
+    <settle_samples>10000</settle_samples>  <!-- 1ms settle at 10MSPS -->
+  </sweep>
+
+  <rank>1</rank>
+
+  <receiver>
+    <local_ip>127.0.0.1</local_ip>
+    <port>0</port>
+  </receiver>
+
+</sdr_acquisition>

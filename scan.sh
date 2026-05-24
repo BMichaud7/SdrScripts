@@ -167,7 +167,7 @@ cat > "$SCAN_CFG" << XML
     <usable_bw_fraction>0.80</usable_bw_fraction>
     <threshold_db>6.0</threshold_db>
     <min_signal_bw_hz>12000</min_signal_bw_hz>
-    <settle_samples>20000</settle_samples>
+    <settle_samples>256</settle_samples>
     <dc_guard_hz>75000</dc_guard_hz>
     <!-- CA-CFAR: 8 guard + 32 reference cells each side (O(N) via prefix sum) -->
     <cfar_guard_bins>8</cfar_guard_bins>
