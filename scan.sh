@@ -50,6 +50,7 @@ NO_ANALYSIS=false
 NO_PAUSE=false
 USE_DEMOD=false
 USE_DF=false
+USE_TEMP_LOGGER=false
 
 BROKER_USER="sdr_ctrl"
 BROKER_PASS="sdr_hw_test"
@@ -61,6 +62,7 @@ ANALYSIS_IMAGE="sdr-analysis:hw-test"
 ANALYSIS_ONNX_IMAGE="sdr-analysis:hw-onnx"
 DEMOD_IMAGE="sdr-demod:1.0.0"
 DF_IMAGE="sdr-df:1.0.0"
+TEMP_LOGGER_IMAGE="sdr-temp-logger:1.0.0"
 
 DEVICES_XML="$HW_TEST_DIR/devices-direct-eth.xml"
 ARTEMIS_CTR="sdr-artemis"
@@ -70,6 +72,7 @@ ACQUISITION_CTR="sdr-acquisition"
 ANALYSIS_CTR="sdr-analysis"
 DEMOD_CTR="sdr-demod"
 DF_CTR="sdr-df"
+TEMP_LOGGER_CTR="sdr-temp-logger"
 
 PG_USER="sdr"
 PG_PASS="sdr_hw_test"
@@ -100,6 +103,7 @@ usage() {
     echo -e "  --no-pause       Disable analysis pause window (may stall SCAN)"
     echo -e "  --demod          Start DemodApp for on-demand signal demodulation"
     echo -e "  --df             Start DfApp for MUSIC direction finding (multi-SDR)"
+    echo -e "  --temp-logger    Start SdrTempLogger to record hardware temperatures"
     exit 1
 }
 
@@ -128,8 +132,9 @@ while [[ $# -gt 0 ]]; do
         --onnx)        USE_ONNX=true;    shift ;;
         --no-analysis) NO_ANALYSIS=true; shift ;;
         --no-pause)    NO_PAUSE=true;    shift ;;
-        --demod)       USE_DEMOD=true;   shift ;;
-        --df)          USE_DF=true;      shift ;;
+        --demod)       USE_DEMOD=true;       shift ;;
+        --df)          USE_DF=true;          shift ;;
+        --temp-logger) USE_TEMP_LOGGER=true; shift ;;
         *) die "Unknown argument: $1  (run ${0##*/} for usage)" ;;
     esac
 done
@@ -369,7 +374,7 @@ cleanup() {
     echo ""
     info "Shutting down …"
     [[ -n "$LOGGER_PID" ]] && kill "$LOGGER_PID" 2>/dev/null || true
-    for ctr in "$DF_CTR" "$DEMOD_CTR" "$ANALYSIS_CTR" "$ACQUISITION_CTR" "$CONTROLLER_CTR" "$ARTEMIS_CTR" "$POSTGRES_CTR"; do
+    for ctr in "$TEMP_LOGGER_CTR" "$DF_CTR" "$DEMOD_CTR" "$ANALYSIS_CTR" "$ACQUISITION_CTR" "$CONTROLLER_CTR" "$ARTEMIS_CTR" "$POSTGRES_CTR"; do
         is_running "$ctr" && podman stop "$ctr" >/dev/null 2>&1 && info "Stopped $ctr" || true
     done
     ok "All services stopped"
@@ -387,6 +392,7 @@ info "Analysis: $( [[ "$NO_ANALYSIS" == "true" ]] && echo "disabled" || echo "en
 info "Analysis pause: $( [[ "$ANALYSIS_PAUSE_MS" -gt 0 ]] && echo "${ANALYSIS_PAUSE_MS}ms per sweep" || echo "disabled" )"
 info "Demodulation: $USE_DEMOD"
 info "Direction finding: $USE_DF"
+info "Temp logger: $USE_TEMP_LOGGER"
 info "Database: $DB_PATH"
 echo ""
 
@@ -507,6 +513,22 @@ if [[ "$USE_DF" == "true" ]]; then
     ok "DfApp running (bearings → rf.df_results / postgres df_results)"
 fi
 
+# 9. SdrTempLogger (optional — hardware temperature recording)
+if [[ "$USE_TEMP_LOGGER" == "true" ]]; then
+    TEMP_DB_DIR="$SCRIPT_DIR/.temp-data"
+    mkdir -p "$TEMP_DB_DIR"
+    info "Starting SdrTempLogger ($TEMP_LOGGER_IMAGE) …"
+    podman run -d --rm --replace --name "$TEMP_LOGGER_CTR" --network=host \
+        -v "$TEMP_DB_DIR:/data:z" \
+        "$TEMP_LOGGER_IMAGE" \
+        --broker "$BROKER_URL" \
+        --config /etc/sdr-temp-logger/config.yaml \
+        --db /data/sdr_temps.db >/dev/null
+    sleep 2
+    is_running "$TEMP_LOGGER_CTR" || die "SdrTempLogger failed to start"
+    ok "SdrTempLogger running (→ $TEMP_DB_DIR/sdr_temps.db)"
+fi
+
 echo ""
 ok "Pipeline running — press Ctrl+C to stop"
 echo -e "  Monitor:  ${BLU}./read_signals.sh --db $DB_PATH${RST}"
@@ -514,6 +536,8 @@ echo -e "  Monitor:  ${BLU}./read_signals.sh --db $DB_PATH${RST}"
     echo -e "  Demod:    ${BLU}$DEMOD_OUTPUT_DIR${RST} (WAV + bits files)"
 [[ "$USE_DF" == "true" ]] && \
     echo -e "  Bearings: ${BLU}psql -U $PG_USER -d $PG_DB -c 'SELECT * FROM recent_df_results;'${RST}"
+[[ "$USE_TEMP_LOGGER" == "true" ]] && \
+    echo -e "  Temps:    ${BLU}$SCRIPT_DIR/.temp-data/sdr_temps.db${RST}"
 echo ""
 
 # Wait for Ctrl+C
