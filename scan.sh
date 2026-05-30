@@ -5,6 +5,8 @@
 #  Starts: Artemis broker → SdrResourceManager (controller) →
 #          AcquisitionApp (sweep detector) → AnalysisApp (classifier) →
 #          signal_logger.py (persist to SQLite)
+#          [optional] DemodApp (on-demand demodulation)
+#          [optional] DfApp (direction finding — requires multi-SDR array)
 #
 #  Usage:
 #    ./scan.sh <start>-<stop>                    # e.g. ./scan.sh 88-108
@@ -12,11 +14,13 @@
 #    ./scan.sh <start>-<stop> --onnx             # force ONNX classifier
 #    ./scan.sh <start>-<stop> --no-analysis      # detections only (fastest)
 #    ./scan.sh <start>-<stop> --no-pause         # concurrent scan+analysis (may stall)
+#    ./scan.sh <start>-<stop> --demod            # start DemodApp (on-demand demod)
+#    ./scan.sh <start>-<stop> --df               # start DfApp (MUSIC direction finding)
 #
 #  Range is in MHz.  Examples:
-#    ./scan.sh 80-1000     # full sweep
-#    ./scan.sh 88-108      # FM broadcast band only
-#    ./scan.sh 400-800     # UHF/LTE
+#    ./scan.sh 80-1000           # full sweep
+#    ./scan.sh 88-108            # FM broadcast band only
+#    ./scan.sh 400-800 --demod   # UHF/LTE with demodulation
 #
 #  Phased operation (default with analysis):
 #    AcquisitionApp does ONE sweep (rank 2, ~8s), then pauses 3s so
@@ -44,6 +48,8 @@ STOP_MHZ=""
 USE_ONNX=false
 NO_ANALYSIS=false
 NO_PAUSE=false
+USE_DEMOD=false
+USE_DF=false
 
 BROKER_USER="sdr_ctrl"
 BROKER_PASS="sdr_hw_test"
@@ -53,6 +59,8 @@ CONTROLLER_IMAGE="sdr-controller-hw:2.0"
 ACQUISITION_IMAGE="sdr-acquisition:hw-test"
 ANALYSIS_IMAGE="sdr-analysis:hw-test"
 ANALYSIS_ONNX_IMAGE="sdr-analysis:hw-onnx"
+DEMOD_IMAGE="sdr-demod:1.0.0"
+DF_IMAGE="sdr-df:1.0.0"
 
 DEVICES_XML="$HW_TEST_DIR/devices-direct-eth.xml"
 ARTEMIS_CTR="sdr-artemis"
@@ -60,11 +68,14 @@ POSTGRES_CTR="sdr-postgres"
 CONTROLLER_CTR="sdr-controller"
 ACQUISITION_CTR="sdr-acquisition"
 ANALYSIS_CTR="sdr-analysis"
+DEMOD_CTR="sdr-demod"
+DF_CTR="sdr-df"
 
 PG_USER="sdr"
 PG_PASS="sdr_hw_test"
 PG_DB="sdr_scanner"
 PG_DATA_DIR="$SCRIPT_DIR/.pgdata"
+DEMOD_OUTPUT_DIR="$SCRIPT_DIR/.demod-output"
 
 PROTON_PATH="${PROTON_PATH:-/tmp/proton_pkg}"
 
@@ -87,6 +98,8 @@ usage() {
     echo -e "  --onnx           Force ONNX classifier (auto-enabled if model ready)"
     echo -e "  --no-analysis    Skip AnalysisApp — detections only, fastest sweep"
     echo -e "  --no-pause       Disable analysis pause window (may stall SCAN)"
+    echo -e "  --demod          Start DemodApp for on-demand signal demodulation"
+    echo -e "  --df             Start DfApp for MUSIC direction finding (multi-SDR)"
     exit 1
 }
 
@@ -115,6 +128,8 @@ while [[ $# -gt 0 ]]; do
         --onnx)        USE_ONNX=true;    shift ;;
         --no-analysis) NO_ANALYSIS=true; shift ;;
         --no-pause)    NO_PAUSE=true;    shift ;;
+        --demod)       USE_DEMOD=true;   shift ;;
+        --df)          USE_DF=true;      shift ;;
         *) die "Unknown argument: $1  (run ${0##*/} for usage)" ;;
     esac
 done
@@ -231,6 +246,8 @@ cat > "$ANALYSIS_CFG" << XML
     <analysis_topic>rf.analysis</analysis_topic>
     <task_request_queue>sdr.task.request</task_request_queue>
     <task_response_queue>sdr.task.response</task_response_queue>
+    <demod_commands_queue>sdr.demod.commands</demod_commands_queue>
+    <demod_request_queue>rf.demod.request</demod_request_queue>
   </amqp>
   <database>
     <host>localhost</host><port>5432</port><name>sdr_scanner</name>
@@ -252,6 +269,88 @@ cat > "$ANALYSIS_CFG" << XML
 </sdr_analysis>
 XML
 
+# ── Generate demod config (if --demod) ───────────────────────────────────────
+if [[ "$USE_DEMOD" == "true" ]]; then
+    DEMOD_CFG=$(mktemp /tmp/demod_config.XXXXXX.xml)
+    chmod 644 "$DEMOD_CFG"
+    trap 'rm -f "$SCAN_CFG" "$ANALYSIS_CFG" "$DEMOD_CFG"' EXIT
+
+    cat > "$DEMOD_CFG" << XML
+<?xml version="1.0" encoding="UTF-8"?>
+<demod_config>
+  <broker>
+    <url>${BROKER_URL}</url>
+    <username>${BROKER_USER}</username>
+    <password>${BROKER_PASS}</password>
+    <demod_request_queue>rf.demod.request</demod_request_queue>
+    <task_request_queue>sdr.task.request</task_request_queue>
+    <demod_topic>rf.demod</demod_topic>
+  </broker>
+  <streaming>
+    <local_ip>127.0.0.1</local_ip>
+  </streaming>
+  <output>
+    <output_dir>/demod-output</output_dir>
+    <publish_amqp>true</publish_amqp>
+  </output>
+  <engine>
+    <rank>4</rank>
+    <audio_duration_ms>5000</audio_duration_ms>
+    <digital_duration_ms>2000</digital_duration_ms>
+    <audio_sample_rate_hz>48000</audio_sample_rate_hz>
+  </engine>
+</demod_config>
+XML
+fi
+
+# ── Generate df config (if --df) ─────────────────────────────────────────────
+if [[ "$USE_DF" == "true" ]]; then
+    DF_CFG=$(mktemp /tmp/df_config.XXXXXX.xml)
+    chmod 644 "$DF_CFG"
+    trap 'rm -f "$SCAN_CFG" "$ANALYSIS_CFG" "${DEMOD_CFG:-}" "$DF_CFG"' EXIT
+
+    # Antenna array config — update x/y positions to match your physical layout.
+    # scanner_id values must match the AcquisitionApp scanner_id in each device's config.
+    # x = East (m), y = North (m) from antenna 0 (reference).
+    DF_ARRAY_XML="$HW_TEST_DIR/df_array.xml"
+    if [[ -f "$DF_ARRAY_XML" ]]; then
+        DF_ARRAY_BLOCK=$(cat "$DF_ARRAY_XML")
+    else
+        warn "No $DF_ARRAY_XML found — using placeholder 4-element L-array (UPDATE BEFORE USE)"
+        DF_ARRAY_BLOCK='    <element scanner_id="scanner-0"><x>0.00</x><y>0.00</y></element>
+    <element scanner_id="scanner-1"><x>0.00</x><y>0.50</y></element>
+    <element scanner_id="scanner-2"><x>0.50</x><y>0.00</y></element>
+    <element scanner_id="scanner-3"><x>1.00</x><y>0.00</y></element>'
+    fi
+
+    cat > "$DF_CFG" << XML
+<?xml version="1.0" encoding="UTF-8"?>
+<df_config>
+  <scanner_id>df-0</scanner_id>
+  <amqp>
+    <url>${BROKER_URL}</url>
+    <username>${BROKER_USER}</username>
+    <password>${BROKER_PASS}</password>
+    <detections_topic>rf.detections</detections_topic>
+    <df_results_topic>rf.df_results</df_results_topic>
+  </amqp>
+  <database>
+    <host>localhost</host><port>5432</port><name>${PG_DB}</name>
+    <user>${PG_USER}</user><password>${PG_PASS}</password>
+  </database>
+  <array>
+${DF_ARRAY_BLOCK}
+  </array>
+  <engine>
+    <aggregation_window_sec>5</aggregation_window_sec>
+    <freq_bin_hz>100000</freq_bin_hz>
+    <min_elements>3</min_elements>
+    <bearing_step_deg>0.5</bearing_step_deg>
+  </engine>
+</df_config>
+XML
+fi
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 is_running() { podman inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -q true; }
 
@@ -270,7 +369,7 @@ cleanup() {
     echo ""
     info "Shutting down …"
     [[ -n "$LOGGER_PID" ]] && kill "$LOGGER_PID" 2>/dev/null || true
-    for ctr in "$ANALYSIS_CTR" "$ACQUISITION_CTR" "$CONTROLLER_CTR" "$ARTEMIS_CTR" "$POSTGRES_CTR"; do
+    for ctr in "$DF_CTR" "$DEMOD_CTR" "$ANALYSIS_CTR" "$ACQUISITION_CTR" "$CONTROLLER_CTR" "$ARTEMIS_CTR" "$POSTGRES_CTR"; do
         is_running "$ctr" && podman stop "$ctr" >/dev/null 2>&1 && info "Stopped $ctr" || true
     done
     ok "All services stopped"
@@ -286,6 +385,8 @@ info "Range: ${START_MHZ}–${STOP_MHZ} MHz"
 info "ONNX classifier: $USE_ONNX"
 info "Analysis: $( [[ "$NO_ANALYSIS" == "true" ]] && echo "disabled" || echo "enabled ($FINAL_ANALYSIS_IMAGE)" )"
 info "Analysis pause: $( [[ "$ANALYSIS_PAUSE_MS" -gt 0 ]] && echo "${ANALYSIS_PAUSE_MS}ms per sweep" || echo "disabled" )"
+info "Demodulation: $USE_DEMOD"
+info "Direction finding: $USE_DF"
 info "Database: $DB_PATH"
 echo ""
 
@@ -305,9 +406,11 @@ if ! is_running "$POSTGRES_CTR"; then
         podman exec "$POSTGRES_CTR" pg_isready -U "$PG_USER" -d "$PG_DB" 2>/dev/null && break
         sleep 1
     done
-    # Apply shared schema (AcquisitionApp + AnalysisApp use the same signals table)
+    # Apply schemas
     podman exec -i "$POSTGRES_CTR" psql -U "$PG_USER" -d "$PG_DB" \
         < "$SCRIPT_DIR/../AcquisitionApp/schema/init.sql" >/dev/null
+    podman exec -i "$POSTGRES_CTR" psql -U "$PG_USER" -d "$PG_DB" \
+        < "$SCRIPT_DIR/../DfApp/schema/init.sql" >/dev/null
     ok "PostgreSQL ready"
 else
     ok "PostgreSQL already running"
@@ -378,9 +481,39 @@ if [[ "$NO_ANALYSIS" == "false" ]]; then
     ok "AnalysisApp running"
 fi
 
+# 7. DemodApp (optional — on-demand signal demodulation)
+if [[ "$USE_DEMOD" == "true" ]]; then
+    info "Starting DemodApp ($DEMOD_IMAGE) …"
+    mkdir -p "$DEMOD_OUTPUT_DIR"
+    podman run -d --rm --replace --name "$DEMOD_CTR" --network=host \
+        -v "$DEMOD_CFG:/etc/sdr-demod/demod.xml:ro,z" \
+        -v "$DEMOD_OUTPUT_DIR:/demod-output:z" \
+        -e SDR_LOG_LEVEL=info \
+        "$DEMOD_IMAGE" >/dev/null
+    sleep 2
+    is_running "$DEMOD_CTR" || die "DemodApp failed to start"
+    ok "DemodApp running (output → $DEMOD_OUTPUT_DIR)"
+fi
+
+# 8. DfApp (optional — MUSIC direction finding, requires multi-SDR array)
+if [[ "$USE_DF" == "true" ]]; then
+    info "Starting DfApp ($DF_IMAGE) …"
+    podman run -d --rm --replace --name "$DF_CTR" --network=host \
+        -v "$DF_CFG:/etc/sdr-df/df.xml:ro,z" \
+        -e SDR_LOG_LEVEL=info \
+        "$DF_IMAGE" >/dev/null
+    sleep 2
+    is_running "$DF_CTR" || die "DfApp failed to start"
+    ok "DfApp running (bearings → rf.df_results / postgres df_results)"
+fi
+
 echo ""
 ok "Pipeline running — press Ctrl+C to stop"
 echo -e "  Monitor:  ${BLU}./read_signals.sh --db $DB_PATH${RST}"
+[[ "$USE_DEMOD" == "true" ]] && \
+    echo -e "  Demod:    ${BLU}$DEMOD_OUTPUT_DIR${RST} (WAV + bits files)"
+[[ "$USE_DF" == "true" ]] && \
+    echo -e "  Bearings: ${BLU}psql -U $PG_USER -d $PG_DB -c 'SELECT * FROM recent_df_results;'${RST}"
 echo ""
 
 # Wait for Ctrl+C
