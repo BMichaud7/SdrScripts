@@ -448,6 +448,16 @@ sleep 3
 is_running "$CONTROLLER_CTR" || die "Controller failed to start"
 ok "Controller running"
 
+# Purge stale task requests that may have accumulated from previous sessions.
+# Without this, the controller processes a backlog of old tasks and acquisition
+# never receives IQ data within its 5 s timeout, causing "no IQ data" loops.
+info "Purging stale task queue …"
+podman exec "$ARTEMIS_CTR" /var/lib/artemis-instance/bin/artemis queue purge \
+    --name sdr.task.request \
+    --url tcp://localhost:61616 \
+    --user "$BROKER_USER" --password "$BROKER_PASS" \
+    >/dev/null 2>&1 || warn "Queue purge failed (Artemis not ready yet?)"
+
 # 4. Signal logger — start BEFORE AcquisitionApp so it doesn't miss the first sweep
 # Use the PostgreSQL backend (postgres container started in step 1) so signals
 # land in both postgres (queryable via psql/Grafana) and the local SQLite file.
