@@ -57,7 +57,7 @@ BROKER_PASS="sdr_hw_test"
 BROKER_URL="amqp://localhost:5672"
 
 CONTROLLER_IMAGE="sdr-controller-hw:3.0"
-ACQUISITION_IMAGE="sdr-acquisition:hw-test"
+ACQUISITION_IMAGE="ghcr.io/bmichaud7/sdr-acquisition:1.5.0"
 ANALYSIS_IMAGE="sdr-analysis:hw-test"
 ANALYSIS_ONNX_IMAGE="sdr-analysis:hw-onnx"
 DEMOD_IMAGE="sdr-demod:1.1.0"

@@ -1,5 +1,9 @@
 rpms/*.rpm
 signals.db
+*.db-shm
+*.db-wal
+.pgdata/
+.demod-output/
 
 # Generated docs
 docs/html/
