@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Tewksbury MA — P25 + analog scanner config
+  Control channel: 482.6625 MHz (WIJ444, NAC 851, P25)
+  Update control_freq_hz and tg_whitelist with actual TG IDs from RadioReference.
+
+  Usage:
+    podman run -d --name sdr-acquisition --network=host \
+      -e SDR_LOG_LEVEL=info \
+      -v $(pwd)/hw-test/scanner-tewksbury.xml:/etc/sdr-acquisition/scanner.xml:ro,z \
+      ghcr.io/bmichaud7/sdr-acquisition:1.5.0
+-->
+<sdr_acquisition version="2.0">
+
+  <scanner_id>scanner-tewksbury</scanner_id>
+
+  <amqp>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <detection_topic>rf.detections</detection_topic>
+    <task_request_queue>sdr.task.request</task_request_queue>
+    <task_response_queue>sdr.task.response</task_response_queue>
+    <reconnect_interval_sec>5</reconnect_interval_sec>
+  </amqp>
+
+  <database>
+    <host>localhost</host>
+    <port>5432</port>
+    <name>sdr_scanner</name>
+    <user>sdr</user>
+    <password>sdr_hw_test</password>
+  </database>
+
+  <device>
+    <rx_channels>1</rx_channels>
+    <!-- Sweep at 10 MSPS to cover the 450-490 MHz P25 + analog band -->
+    <sample_rate_sps>10000000</sample_rate_sps>
+    <rx_gain_db>50</rx_gain_db>
+    <bandwidth_hz>8000000</bandwidth_hz>
+  </device>
+
+  <!--
+    Sweep covers:
+      450-500 MHz: Tewksbury PD P25 (482.6625), FD P25 (483.xxx), EMA (158.820→skip)
+      155-160 MHz: EMA + school buses (partial — tune to FM band for those)
+    For a P25-focused test, use 480-486 MHz to cover PD+FD channels.
+  -->
+  <sweep>
+    <start_hz>480000000</start_hz>
+    <stop_hz>486000000</stop_hz>
+    <dwell_samples>1048576</dwell_samples>
+    <fft_size>4096</fft_size>
+    <usable_bw_fraction>0.85</usable_bw_fraction>
+    <threshold_db>3.0</threshold_db>
+    <min_signal_bw_hz>5000</min_signal_bw_hz>
+    <settle_samples>10000</settle_samples>
+    <cfar_guard_bins>8</cfar_guard_bins>
+    <cfar_ref_bins>32</cfar_ref_bins>
+    <min_papr_db>3.0</min_papr_db>
+    <noise_floor_alpha>0.08</noise_floor_alpha>
+    <analysis_pause_ms>0</analysis_pause_ms>
+  </sweep>
+
+  <rank>1</rank>
+
+  <receiver>
+    <local_ip>127.0.0.1</local_ip>
+    <port>31000</port>
+  </receiver>
+
+  <!--
+    P25 voice channel follower.
+    When DemodApp decodes a channel grant on the P25 control channel,
+    AcquisitionApp will retune to the voice channel frequency for capture_s
+    seconds and publish detections tagged scanner_id="scanner-tewksbury-tgN".
+
+    tg_whitelist: talk group IDs to follow (space-separated).
+    Leave empty to follow ALL talk groups.
+    Known TGs (from RadioReference, verify against live traffic):
+      Tewksbury PD Primary:  check rf.p25.grants after first run
+      Tewksbury FD Primary:  check rf.p25.grants after first run
+  -->
+  <p25>
+    <enabled>true</enabled>
+    <grant_topic>rf.p25.grants</grant_topic>
+    <!-- Capture 4s per voice grant — enough for a typical keying -->
+    <capture_s>4.0</capture_s>
+    <!-- Rank 3 = highest priority, preempts sweep scanner -->
+    <rank>3</rank>
+    <!-- Leave empty first run to discover all active TGs,
+         then populate with confirmed IDs -->
+    <tg_whitelist></tg_whitelist>
+  </p25>
+
+</sdr_acquisition>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Tewksbury MA — DemodApp config with P25 control channel monitor.
+  Control channel: 482.6625 MHz, NAC 851 (Tewksbury PD WIJ444).
+  Set control_freq_hz to the known P25 control channel frequency.
+-->
+<demod_config version="1.0">
+  <broker>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <demod_request_queue>rf.demod.request</demod_request_queue>
+    <demod_topic>rf.demod</demod_topic>
+    <task_queue>sdr.tasks</task_queue>
+  </broker>
+
+  <engine>
+    <rank>4</rank>
+    <audio_duration_sec>5.0</audio_duration_sec>
+    <digital_duration_sec>2.0</digital_duration_sec>
+    <audio_sample_rate_hz>48000</audio_sample_rate_hz>
+    <min_confidence>0.70</min_confidence>
+  </engine>
+
+  <output>
+    <dir>/tmp/sdr-demod</dir>
+    <publish_amqp>true</publish_amqp>
+  </output>
+
+  <local_ip>127.0.0.1</local_ip>
+
+  <p25>
+    <enabled>true</enabled>
+    <!-- Tewksbury PD control channel (confirm from RadioReference or first scan) -->
+    <control_freq_hz>482662500</control_freq_hz>
+    <!-- IQ sample rate for C4FM demodulation — 48kHz is sufficient for 12.5 kHz BW -->
+    <sample_rate_hz>48000</sample_rate_hz>
+    <!-- 3 seconds of IQ per decode cycle -->
+    <capture_s>3.0</capture_s>
+    <grant_topic>rf.p25.grants</grant_topic>
+    <!--
+      tg_whitelist: empty = follow all talk groups.
+      Add specific TG IDs here once discovered from live traffic.
+      Example (hypothetical — verify from actual traffic):
+        <tg_whitelist>1001 1002 2001</tg_whitelist>
+    -->
+    <tg_whitelist></tg_whitelist>
+  </p25>
+</demod_config>
