@@ -56,7 +56,7 @@ BROKER_USER="sdr_ctrl"
 BROKER_PASS="sdr_hw_test"
 BROKER_URL="amqp://localhost:5672"
 
-CONTROLLER_IMAGE="sdr-controller-hw:2.0"
+CONTROLLER_IMAGE="sdr-controller-hw:3.0"
 ACQUISITION_IMAGE="sdr-acquisition:hw-test"
 ANALYSIS_IMAGE="sdr-analysis:hw-test"
 ANALYSIS_ONNX_IMAGE="sdr-analysis:hw-onnx"
@@ -540,8 +540,12 @@ echo -e "  Monitor:  ${BLU}./read_signals.sh --db $DB_PATH${RST}"
     echo -e "  Temps:    ${BLU}$SCRIPT_DIR/.temp-data/sdr_temps.db${RST}"
 echo ""
 
-# Wait for Ctrl+C
-wait "$LOGGER_PID" 2>/dev/null || true
+# Wait for Ctrl+C (fall back to acquisition container if logger failed/absent)
+if [[ -n "$LOGGER_PID" ]] && kill -0 "$LOGGER_PID" 2>/dev/null; then
+    wait "$LOGGER_PID" 2>/dev/null || true
+else
+    while is_running "$ACQUISITION_CTR"; do sleep 5; done
+fi
 
 # NOTE: Running with --no-analysis gives the best scanning performance (7.6s sweep).
 # For phased scan+analysis: AcquisitionApp does one sweep (rank 2), then releases the
