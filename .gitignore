@@ -8,3 +8,4 @@ signals.db
 # Generated docs
 docs/html/
 docs/master/
+build/
