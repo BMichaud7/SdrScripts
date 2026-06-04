@@ -1,0 +1,12 @@
+PROJECT_NAME           = "SdrScripts"
+PROJECT_BRIEF          = "OpenRFStack container orchestration and deployment scripts"
+OUTPUT_DIRECTORY       = docs
+INPUT                  = .
+FILE_PATTERNS          = *.sh *.md
+RECURSIVE              = NO
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+EXTRACT_ALL            = YES
+HAVE_DOT               = NO
+QUIET                  = YES

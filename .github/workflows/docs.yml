@@ -1,0 +1,39 @@
+name: Doxygen
+
+on:
+  push:
+    branches: ["main/1.0"]
+  workflow_dispatch:
+
+jobs:
+  doxygen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Doxygen
+        run: sudo apt-get install -y --no-install-recommends doxygen 2>/dev/null
+
+      - name: Generate HTML docs
+        run: |
+          # Use repo Doxyfile but force output to /tmp/doxout so we can deploy cleanly
+          sed 's|^OUTPUT_DIRECTORY.*|OUTPUT_DIRECTORY = /tmp/doxout|' Doxyfile > /tmp/Doxyfile.ci
+          doxygen /tmp/Doxyfile.ci
+
+      - name: Deploy to bmichaud.com
+        env:
+          DEPLOY_KEY: ${{ secrets.DOCS_DEPLOY_KEY }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p 21098 bmichaud.com >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Sync generated HTML to /Sdr/docs/{repo}/
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p 21098 -o StrictHostKeyChecking=no" \
+            /tmp/doxout/html/ \
+            bmicmqfq@bmichaud.com:~/public_html/Sdr/docs/${REPO}/
+
+          echo "Deployed to https://bmichaud.com/Sdr/docs/${REPO}/"
