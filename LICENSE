@@ -1,0 +1,155 @@
+========================================================================
+PROJECT NAME: OpenRFStack
+AUTHOR: Brendan Michaud
+YEAR: 2026
+PROJECT URL: https://github.com/OpenRFStack
+LICENSE: Personal Use License
+========================================================================
+
+1. DEFINITIONS
+
+"Work" refers to all software, source code, binaries, hardware designs,
+schematics, documentation, and associated materials distributed under
+this License.
+
+"Individual" means a natural person acting solely in their personal
+capacity and not on behalf of any organization, employer, client,
+institution, or government.
+
+"Organization" includes, but is not limited to: corporations, LLCs,
+partnerships, nonprofits, universities, government agencies, contractors,
+consulting firms, research labs, and any other formal or informal entity,
+regardless of profit status.
+
+"Military Use" includes any use by or for armed forces, defense departments,
+intelligence agencies, defense contractors, or any work funded or directed
+by them, including but not limited to weapons systems, surveillance,
+targeting, cyberwarfare, or combat-support systems.
+
+"Commercial Use" includes any use by an Organization or by an Individual
+acting on behalf of, employed by, contracted by, or affiliated with an
+Organization, whether or not for profit.
+
+"Academic Use" refers to individual students (including undergraduate,
+graduate, and PhD students) acting in a personal capacity for self-directed
+learning, research, or coursework assignments.
+
+---
+
+2. LICENSE GRANT
+
+Permission is granted only to Individuals and Academic Users for:
+
+- Personal learning and experimentation
+- Self-directed study
+- Independent academic research (including PhD research as an individual)
+- Personal hobbyist use
+
+---
+
+3. RESTRICTIONS
+
+A. ORGANIZATIONAL USE PROHIBITED
+The Work may not be used by or within any Organization without explicit
+written permission from the author.
+
+B. MILITARY USE PROHIBITED
+The Work may not be used for any Military Use.
+
+C. STUDENT-ONLY EDUCATIONAL USE LIMITATION
+The Work may be used by individual students for personal study and
+assignments only.
+
+However, the Work may NOT be:
+- assigned, required, or distributed by any instructor, professor,
+  teaching assistant, school, university, or institution
+- included in syllabi, lectures, labs, coursework materials, or training
+  programs
+- used as part of any structured or institutionally provided education,
+  whether paid or unpaid
+
+All educational use must be independently initiated by the student.
+
+D. AI / MACHINE LEARNING TRAINING PROHIBITED
+The Work may not be used for training, fine-tuning, or developing AI/ML
+systems for commercial or organizational purposes without explicit written
+permission.
+
+E. INTERNAL OR INSTITUTIONAL RESEARCH PROHIBITED
+Any use by an Organization, including universities, research labs, or
+government entities acting in an institutional capacity, is prohibited.
+
+F. REDISTRIBUTION RESTRICTIONS
+Redistribution by Organizations is prohibited. Individuals may redistribute
+only for personal, non-commercial purposes and must include this License.
+
+---
+
+4. DERIVATIVE WORKS
+
+All modifications, forks, or derivative works must remain under this same
+License and comply with all restrictions herein. Relicensing is not permitted.
+
+---
+
+5. SPECIAL PERMISSIONS / EXCEPTIONS
+
+The author may grant exceptions or alternative licensing terms at their sole
+discretion to any party (including commercial, governmental, or military
+entities), either free of charge or for payment, under separate written
+agreement. Such permissions apply only to the specified party and do not
+modify this License for others.
+
+---
+
+6. EXPORT CONTROL COMPLIANCE
+
+Users are responsible for complying with all applicable export and import
+laws, including U.S. ITAR and EAR regulations or equivalent laws in their
+jurisdiction. The Work may not be exported, re-exported, or transferred to
+prohibited countries or entities without authorization.
+
+---
+
+7. ATTRIBUTION / CITATION
+
+Any public use, publication, presentation, or research referencing the Work
+must provide attribution.
+
+Suggested citation:
+
+    OpenRFStack, Brendan Michaud, 2026, https://github.com/OpenRFStack
+
+---
+
+8. DISCLAIMER OF WARRANTY
+
+THE WORK IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. THE AUTHOR IS NOT
+RESPONSIBLE FOR ANY DAMAGE, LOSS, INJURY, OR MISUSE ARISING FROM THE USE OF
+THE WORK.
+
+---
+
+9. TERMINATION
+
+Any violation of this License immediately terminates all rights granted
+herein. Users must cease all use, distribution, and modification upon
+violation.
+
+---
+
+10. LICENSE UPDATES / VERSIONING
+
+The author may update this License at any time. The most recent version is
+authoritative. Continued use of the Work constitutes acceptance of the
+latest License.
+
+---
+
+11. GOVERNING LAW / VENUE
+
+This License is governed by the laws of the State of New Hampshire, USA.
+Any disputes must be brought exclusively in the courts of Hillsborough
+County, New Hampshire, USA.
+
+========================================================================
