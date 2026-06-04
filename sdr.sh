@@ -444,3 +444,9 @@ EOF
         ;;
     *) die "Unknown command: $cmd — run './sdr.sh help'" ;;
 esac
+
+# ========================================================================
+# End of file — OpenRFStack
+# Subject to Personal Use License
+# https://github.com/OpenRFStack
+# ========================================================================

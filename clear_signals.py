@@ -100,3 +100,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# ========================================================================
+# End of file — OpenRFStack
+# Subject to Personal Use License
+# https://github.com/OpenRFStack
+# ========================================================================

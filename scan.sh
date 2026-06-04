@@ -580,3 +580,9 @@ fi
 # ONNX model: train with AnalysisApp/training/train_classifier.py, then copy
 #   modulation_classifier.onnx + classes.json → $ML_MODEL_DIR
 # For bulk classification of a pre-scanned DB: replay_detections.py
+
+# ========================================================================
+# End of file — OpenRFStack
+# Subject to Personal Use License
+# https://github.com/OpenRFStack
+# ========================================================================

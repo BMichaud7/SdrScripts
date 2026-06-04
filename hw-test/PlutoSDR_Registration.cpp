@@ -175,3 +175,11 @@ static SoapySDR::Device *make_PlutoSDR(const SoapySDR::Kwargs &args)
 }
 
 static SoapySDR::Registry register_plutosdr("plutosdr", &find_PlutoSDR, &make_PlutoSDR, SOAPY_SDR_ABI_VERSION);
+
+/*
+========================================================================
+End of file — OpenRFStack
+Subject to Personal Use License
+https://github.com/OpenRFStack
+========================================================================
+*/

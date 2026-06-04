@@ -23,3 +23,9 @@ else
     echo "ERROR: doxygen not found. Install: sudo dnf install doxygen"; exit 1
 fi
 echo "Done: file://$(pwd)/docs/html/index.html"
+
+# ========================================================================
+# End of file — OpenRFStack
+# Subject to Personal Use License
+# https://github.com/OpenRFStack
+# ========================================================================

@@ -384,3 +384,9 @@ EOF
         *) die "Unknown command: $cmd — run './deploy.sh help'" ;;
     esac
 done
+
+# ========================================================================
+# End of file — OpenRFStack
+# Subject to Personal Use License
+# https://github.com/OpenRFStack
+# ========================================================================

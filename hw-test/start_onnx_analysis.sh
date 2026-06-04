@@ -56,3 +56,9 @@ podman logs sdr-analysis 2>&1 | grep -E "OnnxClassifier|classes|loaded|disabled"
 echo ""
 echo "Live scan + ONNX classification active. Running for 3 minutes..."
 PYTHONPATH=/tmp/proton_pkg python3 /home/brendan/hw-test/listen_results.py --duration 180
+
+# ========================================================================
+# End of file — OpenRFStack
+# Subject to Personal Use License
+# https://github.com/OpenRFStack
+# ========================================================================
