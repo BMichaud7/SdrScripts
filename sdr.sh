@@ -57,7 +57,7 @@ is_running() { podman inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -q
 wait_port() {
     local host="$1" port="$2" label="$3" max="${4:-30}"
     info "Waiting for $label on $host:$port ..."
-    for i in $(seq 1 "$max"); do
+    for _ in $(seq 1 "$max"); do
         if bash -c ">/dev/tcp/$host/$port" 2>/dev/null; then
             ok "$label is ready"
             return 0
@@ -352,7 +352,7 @@ resolve_services() {
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 cmd="${1:-help}"; shift || true
-services=($(resolve_services "$@"))
+mapfile -t services < <(resolve_services "$@")
 
 case "$cmd" in
     start)
