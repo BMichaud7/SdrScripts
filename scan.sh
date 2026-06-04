@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# ========================================================================
+# Project: OpenRFStack
+# Author:  Brendan Michaud
+# Year:    2026
+# Part of OpenRFStack (https://github.com/OpenRFStack)
+#
+# Licensed under the Personal Use License.
+# Do not use for commercial, organizational, or military purposes.
+# ========================================================================
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  scan.sh — Start the full SDR scan pipeline and keep it running.
 #

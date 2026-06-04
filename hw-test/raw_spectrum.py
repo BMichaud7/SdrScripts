@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# ========================================================================
+# Project: OpenRFStack
+# Author:  Brendan Michaud
+# Year:    2026
+# Part of OpenRFStack (https://github.com/OpenRFStack)
+#
+# Licensed under the Personal Use License.
+# Do not use for commercial, organizational, or military purposes.
+# Contact author for permission: https://github.com/OpenRFStack
+# ========================================================================
+
 """
 Raw spectrum snapshot at a single frequency.
 Collects IQ, prints Welch PSD top-20 peaks, and shows a text waterfall.

@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# ========================================================================
+# Project: OpenRFStack
+# Author:  Brendan Michaud
+# Year:    2026
+# Part of OpenRFStack (https://github.com/OpenRFStack)
+#
+# Licensed under the Personal Use License.
+# Do not use for commercial, organizational, or military purposes.
+# ========================================================================
+
 # Wait for the ONNX model to finish training, then start the ONNX-enabled
 # AnalysisApp and run a live scan so the CNN classifies real signals.
 set -euo pipefail

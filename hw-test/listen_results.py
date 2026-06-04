@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# ========================================================================
+# Project: OpenRFStack
+# Author:  Brendan Michaud
+# Year:    2026
+# Part of OpenRFStack (https://github.com/OpenRFStack)
+#
+# Licensed under the Personal Use License.
+# Do not use for commercial, organizational, or military purposes.
+# Contact author for permission: https://github.com/OpenRFStack
+# ========================================================================
+
 """
 Live listener: subscribes to rf.detections and rf.analysis, prints a
 consolidated signal table.  Run while AcquisitionApp + AnalysisApp are active.

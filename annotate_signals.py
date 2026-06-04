@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# ========================================================================
+# Project: OpenRFStack
+# Author:  Brendan Michaud
+# Year:    2026
+# Part of OpenRFStack (https://github.com/OpenRFStack)
+#
+# Licensed under the Personal Use License.
+# Do not use for commercial, organizational, or military purposes.
+# Contact author for permission: https://github.com/OpenRFStack
+# ========================================================================
+
 """
 @file annotate_signals.py
 @brief Cross-reference detected signals with US frequency allocations.
