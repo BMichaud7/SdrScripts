@@ -80,7 +80,7 @@ is_running() { podman inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -q
 wait_port() {
     local host="$1" port="$2" label="$3" max="${4:-30}"
     info "Waiting for $label ..."
-    for i in $(seq 1 "$max"); do
+    for _ in $(seq 1 "$max"); do
         bash -c ">/dev/tcp/$host/$port" 2>/dev/null && { ok "$label ready"; return 0; }
         sleep 1
     done

@@ -361,7 +361,7 @@ is_running() { podman inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -q
 
 wait_port() {
     local host="$1" port="$2" label="$3" max="${4:-30}"
-    for i in $(seq 1 "$max"); do
+    for _ in $(seq 1 "$max"); do
         if bash -c ">/dev/tcp/$host/$port" 2>/dev/null; then ok "$label ready"; return 0; fi
         sleep 1
     done
@@ -408,7 +408,7 @@ if ! is_running "$POSTGRES_CTR"; then
         -v "$PG_DATA_DIR:/var/lib/postgresql/data:z" \
         docker.io/postgres:16-alpine >/dev/null
     # Wait for ready (up to 30s)
-    for i in $(seq 1 30); do
+    for _ in $(seq 1 30); do
         podman exec "$POSTGRES_CTR" pg_isready -U "$PG_USER" -d "$PG_DB" 2>/dev/null && break
         sleep 1
     done
