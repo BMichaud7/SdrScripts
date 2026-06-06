@@ -36,7 +36,7 @@
     <!-- ADALM-PLUTO: 70 MHz – 6 GHz, up to 61.44 MSPS, USB direct via libiio -->
     <device id="pluto-0">
       <driver>plutosdr</driver>
-      <uri>driver=plutosdr</uri>
+      <uri></uri>
       <label>PlutoSDR</label>
       <streaming_source_ip>127.0.0.1</streaming_source_ip>
       <capabilities>
