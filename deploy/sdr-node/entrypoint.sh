@@ -91,6 +91,25 @@ else
     ok "SDR binaries already installed — skipping RPM download"
 fi
 
+# ── Whisper model (optional auto-download) ────────────────────────────────────
+# Set WHISPER_MODEL=base.en (or tiny.en, small.en, medium.en) to auto-download.
+# Or mount a pre-downloaded model: -v /path/to/models:/etc/sdr-speech/models:ro,z
+WHISPER_MODEL_DIR=/etc/sdr-speech/models
+mkdir -p "$WHISPER_MODEL_DIR"
+if [[ -n "${WHISPER_MODEL:-}" ]]; then
+    MODEL_FILE="$WHISPER_MODEL_DIR/ggml-${WHISPER_MODEL}.bin"
+    if [[ ! -f "$MODEL_FILE" ]]; then
+        log "Downloading whisper model: ${WHISPER_MODEL} …"
+        curl -fL \
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${WHISPER_MODEL}.bin" \
+            -o "$MODEL_FILE" \
+        && ok "Whisper model downloaded: $MODEL_FILE" \
+        || warn "Failed to download whisper model — speech transcription disabled"
+    else
+        ok "Whisper model already present: $MODEL_FILE"
+    fi
+fi
+
 # ── Default configs ───────────────────────────────────────────────────────────
 for cfg in devices.xml scanner.xml analysis.xml node.conf; do
     [[ ! -f "$SDR_ETC/$cfg" ]] && cp "$CONFIG_DIR/$cfg" "$SDR_ETC/$cfg" \
