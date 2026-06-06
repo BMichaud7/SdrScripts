@@ -13,6 +13,8 @@
 #     --privileged \
 #     --cgroupns=host \
 #     --network host \
+#     --device /dev/bus/usb \
+#     --device /dev/kmsg \
 #     -e GITHUB_TOKEN=<your-token> \
 #     -v sdr-data:/var/lib/sdr:z \
 #     -v sdr-k3s:/var/lib/rancher/k3s:z \
@@ -41,6 +43,29 @@ RUN dnf install -y epel-release && \
         procps-ng \
         cyrus-sasl-plain \
     && dnf clean all
+
+# ── libiio + SoapyPlutoSDR (not in EPEL; built from source) ──────────────────
+RUN dnf install -y libxml2-devel libusb-devel cmake ninja-build gcc-c++ git && \
+    git clone --depth 1 --branch v0.26 \
+        https://github.com/analogdevicesinc/libiio.git /tmp/libiio && \
+    cmake -B /tmp/libiio-build -S /tmp/libiio \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DWITH_USB_BACKEND=ON \
+        -DWITH_NETWORK_BACKEND=ON \
+        -DWITH_LOCAL_BACKEND=OFF \
+        -DBUILD_TESTING=OFF && \
+    cmake --build /tmp/libiio-build --parallel && \
+    cmake --install /tmp/libiio-build && \
+    git clone --depth 1 \
+        https://github.com/pothosware/SoapyPlutoSDR.git /tmp/SoapyPlutoSDR && \
+    cmake -B /tmp/SoapyPlutoSDR-build -S /tmp/SoapyPlutoSDR \
+        -DCMAKE_INSTALL_PREFIX=/usr && \
+    cmake --build /tmp/SoapyPlutoSDR-build --parallel && \
+    cmake --install /tmp/SoapyPlutoSDR-build && \
+    ldconfig && \
+    rm -rf /tmp/libiio /tmp/libiio-build /tmp/SoapyPlutoSDR /tmp/SoapyPlutoSDR-build && \
+    dnf remove -y libusb-devel libxml2-devel cmake ninja-build gcc-c++ git && \
+    dnf clean all
 
 # ── GitHub CLI (for release asset downloads) ─────────────────────────────────
 RUN dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo && \

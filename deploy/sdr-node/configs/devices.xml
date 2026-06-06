@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  SdrResourceManager device config — default: RTL-SDR
+  SdrResourceManager device config — default: PlutoSDR (USB)
   Override at runtime: -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
 -->
 <sdr_controller version="2.0">
@@ -33,7 +33,26 @@
   </policy>
 
   <devices>
-    <!-- RTL-SDR v3 / Blog v4: 500 kHz – 1.7 GHz, 3.2 MSPS max -->
+    <!-- ADALM-PLUTO: 70 MHz – 6 GHz, up to 61.44 MSPS, USB direct via libiio -->
+    <device id="pluto-0">
+      <driver>plutosdr</driver>
+      <uri>driver=plutosdr</uri>
+      <label>PlutoSDR</label>
+      <streaming_source_ip>127.0.0.1</streaming_source_ip>
+      <capabilities>
+        <rx_channels>2</rx_channels>
+        <tx_channels>2</tx_channels>
+        <freq_min_hz>70000000</freq_min_hz>
+        <freq_max_hz>6000000000</freq_max_hz>
+        <bandwidth_max_hz>20000000</bandwidth_max_hz>
+        <sample_rate_max_sps>61440000</sample_rate_max_sps>
+        <rx_gain_min_db>-3</rx_gain_min_db>
+        <rx_gain_max_db>71</rx_gain_max_db>
+      </capabilities>
+    </device>
+
+    <!--
+    RTL-SDR v3 / Blog v4 (install SoapyRTLSDR in container):
     <device id="rtlsdr-0">
       <driver>rtlsdr</driver>
       <uri>driver=rtlsdr</uri>
@@ -48,25 +67,6 @@
         <sample_rate_max_sps>3200000</sample_rate_max_sps>
         <rx_gain_min_db>0</rx_gain_min_db>
         <rx_gain_max_db>49</rx_gain_max_db>
-      </capabilities>
-    </device>
-
-    <!--
-    PlutoSDR (Ethernet firmware, extended range):
-    <device id="pluto-0">
-      <driver>plutosdr</driver>
-      <uri>ip:192.168.2.1</uri>
-      <label>PlutoSDR</label>
-      <streaming_source_ip>127.0.0.1</streaming_source_ip>
-      <capabilities>
-        <rx_channels>2</rx_channels>
-        <tx_channels>2</tx_channels>
-        <freq_min_hz>70000000</freq_min_hz>
-        <freq_max_hz>6000000000</freq_max_hz>
-        <bandwidth_max_hz>20000000</bandwidth_max_hz>
-        <sample_rate_max_sps>61440000</sample_rate_max_sps>
-        <rx_gain_min_db>-3</rx_gain_min_db>
-        <rx_gain_max_db>71</rx_gain_max_db>
       </capabilities>
     </device>
     -->
