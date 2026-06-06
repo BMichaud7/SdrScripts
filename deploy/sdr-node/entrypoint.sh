@@ -71,13 +71,14 @@ done
 if [[ $need_install -eq 1 ]]; then
     log "SDR binaries not found — pulling RPMs (tag: ${RELEASE_TAG}) …"
     mkdir -p /tmp/sdr-rpms
+    RPM_ARCH=$(uname -m)  # x86_64 or aarch64
     for bin in "${!SERVICE_MAP[@]}"; do
         IFS=: read -r repo enabled <<< "${SERVICE_MAP[$bin]}"
         [[ "$enabled" != "true" ]] && continue
         log "  Downloading from $repo …"
         gh release download "$RELEASE_TAG" \
             --repo "$repo" \
-            --pattern "*.rpm" \
+            --pattern "*.${RPM_ARCH}.rpm" \
             --dir /tmp/sdr-rpms \
             --clobber 2>/dev/null \
         || warn "  No release found for $repo — skipping"
