@@ -1,10 +1,10 @@
-name: Container
+name: Mobile Container
 
 on:
   push:
     branches: ["main/1.0"]
     paths:
-      - "deploy/sdr-node/**"
+      - "deploy/mobile-node/**"
   workflow_dispatch:
 
 permissions:
@@ -35,20 +35,18 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/sdr-node/Containerfile
+          file: deploy/mobile-node/Containerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/openrfstack/openrfstack-node:latest
-            ghcr.io/openrfstack/openrfstack-node:${{ github.sha }}
+            ghcr.io/openrfstack/openrfstack-mobile:latest
+            ghcr.io/openrfstack/openrfstack-mobile:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Make package public
         run: |
-          gh api -X PATCH /orgs/openrfstack/packages/container/openrfstack-node \
-            -f visibility=public 2>/dev/null || \
-          gh api -X PATCH /user/packages/container/openrfstack-node \
+          gh api -X PATCH /orgs/openrfstack/packages/container/openrfstack-mobile \
             -f visibility=public 2>/dev/null || \
           echo "Note: set package visibility to Public manually at https://github.com/orgs/OpenRFStack/packages"
         env:

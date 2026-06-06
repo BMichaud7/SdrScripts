@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════════════════════
-# OpenRFStack node entrypoint
-# 1. Loads node.conf to determine which services to run.
-# 2. Installs SDR RPMs from GitHub Releases if not already present.
-# 3. Copies default configs to /etc/sdr/ if not already there.
-# 4. Starts k3s server; deploys Artemis and PostgreSQL via k3s.
-# 5. Starts enabled SDR services as supervised background processes.
+# OpenRFStack mobile node entrypoint (lightweight — drone/embedded)
+# Enabled services: sdr_controller, sdr_acquisition, sdr_gps
 # ══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -19,9 +15,9 @@ K3S_KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 export KUBECONFIG=$K3S_KUBECONFIG
 
 GRN='\033[0;32m'; BLU='\033[0;34m'; YLW='\033[0;33m'; RST='\033[0m'
-log()  { echo -e "${BLU}[sdr-node]${RST} $*"; }
-ok()   { echo -e "${GRN}[sdr-node]${RST} $*"; }
-warn() { echo -e "${YLW}[sdr-node]${RST} $*"; }
+log()  { echo -e "${BLU}[mobile-node]${RST} $*"; }
+ok()   { echo -e "${GRN}[mobile-node]${RST} $*"; }
+warn() { echo -e "${YLW}[mobile-node]${RST} $*"; }
 
 # ── Load node config ──────────────────────────────────────────────────────────
 NODE_CONF="${SDR_ETC}/node.conf"
@@ -29,10 +25,10 @@ NODE_CONF="${SDR_ETC}/node.conf"
 
 ENABLE_SDR_CONTROLLER=true
 ENABLE_SDR_ACQUISITION=true
-ENABLE_SDR_ANALYSIS=true
-ENABLE_SDR_DEMOD=true
-ENABLE_SDR_SPEECH=true
-ENABLE_SDR_GPS=false
+ENABLE_SDR_ANALYSIS=false
+ENABLE_SDR_DEMOD=false
+ENABLE_SDR_SPEECH=false
+ENABLE_SDR_GPS=true
 REPO_SDR_CONTROLLER=OpenRFStack/SdrResourceManager
 REPO_SDR_ACQUISITION=OpenRFStack/AcquisitionApp
 REPO_SDR_ANALYSIS=OpenRFStack/AnalysisApp
@@ -48,16 +44,13 @@ if [[ -f "$NODE_CONF" ]]; then
 fi
 
 # ── Data / log directories ─────────────────────────────────────────────────────
-mkdir -p "$SDR_DATA"/{pgdata,transcripts,demod-output,speech-output,acq-cache}
+mkdir -p "$SDR_DATA"/{pgdata,gps,acq-cache}
 mkdir -p "$SDR_ETC" "$LOG_DIR"
 
-# ── RPM install (skipped if all enabled binaries already present) ─────────────
+# ── RPM install ───────────────────────────────────────────────────────────────
 declare -A SERVICE_MAP=(
     [sdr_controller]="${REPO_SDR_CONTROLLER}:${ENABLE_SDR_CONTROLLER}"
     [sdr_acquisition]="${REPO_SDR_ACQUISITION}:${ENABLE_SDR_ACQUISITION}"
-    [sdr_analysis]="${REPO_SDR_ANALYSIS}:${ENABLE_SDR_ANALYSIS}"
-    [sdr_demod]="${REPO_SDR_DEMOD}:${ENABLE_SDR_DEMOD}"
-    [sdr_speech]="${REPO_SDR_SPEECH}:${ENABLE_SDR_SPEECH}"
     [sdr_gps]="${REPO_SDR_GPS}:${ENABLE_SDR_GPS}"
 )
 
@@ -94,37 +87,13 @@ else
     ok "SDR binaries already installed — skipping RPM download"
 fi
 
-# ── Whisper model (optional auto-download) ────────────────────────────────────
-# Set WHISPER_MODEL=base.en (or tiny.en, small.en, medium.en) to auto-download.
-# Or mount a pre-downloaded model: -v /path/to/models:/etc/sdr-speech/models:ro,z
-WHISPER_MODEL_DIR=/etc/sdr-speech/models
-mkdir -p "$WHISPER_MODEL_DIR"
-if [[ -n "${WHISPER_MODEL:-}" ]]; then
-    MODEL_FILE="$WHISPER_MODEL_DIR/ggml-${WHISPER_MODEL}.bin"
-    if [[ ! -f "$MODEL_FILE" ]]; then
-        log "Downloading whisper model: ${WHISPER_MODEL} …"
-        curl -fL \
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${WHISPER_MODEL}.bin" \
-            -o "$MODEL_FILE" \
-        && ok "Whisper model downloaded: $MODEL_FILE" \
-        || warn "Failed to download whisper model — speech transcription disabled"
-    else
-        ok "Whisper model already present: $MODEL_FILE"
-    fi
-fi
-
 # ── Default configs ───────────────────────────────────────────────────────────
-for cfg in devices.xml scanner.xml analysis.xml node.conf; do
+for cfg in devices.xml scanner.xml node.conf; do
     [[ ! -f "$SDR_ETC/$cfg" ]] && cp "$CONFIG_DIR/$cfg" "$SDR_ETC/$cfg" \
         && log "Installed default config: $SDR_ETC/$cfg"
 done
 
-# demod, speech, and gps use their own config dirs
-mkdir -p /etc/sdr-demod /etc/sdr-speech /etc/sdr-gps
-[[ ! -f /etc/sdr-demod/demod.xml ]] && cp "$CONFIG_DIR/demod.xml" /etc/sdr-demod/demod.xml \
-    && log "Installed default config: /etc/sdr-demod/demod.xml"
-[[ ! -f /etc/sdr-speech/speech.xml ]] && cp "$CONFIG_DIR/speech.xml" /etc/sdr-speech/speech.xml \
-    && log "Installed default config: /etc/sdr-speech/speech.xml"
+mkdir -p /etc/sdr-gps
 [[ ! -f /etc/sdr-gps/gps.xml ]] && cp "$CONFIG_DIR/gps.xml" /etc/sdr-gps/gps.xml \
     && log "Installed default config: /etc/sdr-gps/gps.xml"
 
@@ -156,13 +125,7 @@ k3s kubectl rollout status deployment/postgres -n sdr-system --timeout=180s \
     || warn "PostgreSQL not ready yet — continuing"
 ok "Infrastructure ready"
 
-# Clean up legacy SDR k8s deployments if present from a previous image version
-for svc in sdr-controller sdr-acquisition sdr-analysis sdr-demod sdr-speech; do
-    k3s kubectl delete deployment "$svc" -n sdr-system --ignore-not-found 2>/dev/null || true
-done
-
-# ── Start SDR services as supervised processes ────────────────────────────────
-# Run binaries directly in this container to avoid nested-container glibc conflicts.
+# ── Start SDR services ────────────────────────────────────────────────────────
 SDR_PIDS=()
 
 start_service() {
@@ -186,10 +149,7 @@ start_service() {
 
 [[ "$ENABLE_SDR_CONTROLLER"  == "true" ]] && start_service sdr-controller  sdr_controller  "$SDR_ETC/devices.xml"
 [[ "$ENABLE_SDR_ACQUISITION" == "true" ]] && start_service sdr-acquisition sdr_acquisition "$SDR_ETC/scanner.xml"
-[[ "$ENABLE_SDR_ANALYSIS"    == "true" ]] && start_service sdr-analysis    sdr_analysis    "$SDR_ETC/analysis.xml"
-[[ "$ENABLE_SDR_DEMOD"       == "true" ]] && start_service sdr-demod       sdr_demod  /etc/sdr-demod/demod.xml
-[[ "$ENABLE_SDR_SPEECH"      == "true" ]] && start_service sdr-speech      sdr_speech /etc/sdr-speech/speech.xml
-[[ "$ENABLE_SDR_GPS"         == "true" ]] && start_service sdr-gps         sdr_gps    /etc/sdr-gps/gps.xml
+[[ "$ENABLE_SDR_GPS"         == "true" ]] && start_service sdr-gps         sdr_gps         /etc/sdr-gps/gps.xml
 
 ok "All services started"
 k3s kubectl get pods -n sdr-system

@@ -1,28 +1,31 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# OpenRFStack — All-in-one SDR Node
-# Rocky Linux 9 headless + k3s orchestrator
+# OpenRFStack — Mobile SDR Node (lightweight)
+# Rocky Linux 9 · amd64 + arm64
 #
-# First run: pulls latest RPMs from GitHub Releases and installs them.
-# Subsequent runs: RPMs already installed, starts k3s and applies manifests.
+# Designed for drones and low-compute embedded boards.
+# Runs: SdrResourceManager (task manager), AcquisitionApp, GpsApp.
+# Artemis and PostgreSQL managed by k3s.
 #
 # Build (from SdrScripts/):
-#   podman build -t openrfstack-node:latest -f deploy/sdr-node/Containerfile .
+#   podman build -t openrfstack-mobile:latest -f deploy/mobile-node/Containerfile .
 #
 # Run:
-#   podman run -d --name sdr-node \
+#   podman run -d --name sdr-mobile \
 #     --privileged \
 #     --cgroupns=host \
 #     --network host \
 #     --device /dev/bus/usb \
 #     --device /dev/kmsg \
+#     --device /dev/ttyUSB0 \
 #     -e GITHUB_TOKEN=<your-token> \
 #     -v sdr-data:/var/lib/sdr:z \
 #     -v sdr-k3s:/var/lib/rancher/k3s:z \
-#     openrfstack-node:latest
+#     openrfstack-mobile:latest
 #
-# To override which services run (edit node.conf, then mount it):
-#   -v /path/to/node.conf:/etc/sdr/node.conf:ro,z
-# To override device config (e.g. for RTL-SDR instead of PlutoSDR):
+# GPS: mount serial GPS device with --device /dev/ttyUSB0 (or ttyACM0)
+#   and ensure gpsd is running (pass -v /run/gpsd.sock:/run/gpsd.sock:z
+#   if using host gpsd, or the container will try localhost:2947).
+# Override device config for RTL-SDR:
 #   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
 # ══════════════════════════════════════════════════════════════════════════════
 FROM rockylinux:9
@@ -42,6 +45,7 @@ RUN dnf install -y epel-release && \
         curl \
         procps-ng \
         cyrus-sasl-plain \
+        gpsd \
     && dnf clean all
 
 # ── libiio + SoapyPlutoSDR (not in EPEL; built from source) ──────────────────
@@ -84,14 +88,11 @@ RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
     mkdir -p /var/lib/rancher/k3s /etc/rancher/k3s
 
 # ── Bundle manifests and default configs ─────────────────────────────────────
-COPY deploy/sdr-node/k8s/     /opt/sdr-node/k8s/
-COPY deploy/sdr-node/configs/ /opt/sdr-node/configs/
-COPY deploy/sdr-node/entrypoint.sh /opt/sdr-node/entrypoint.sh
+COPY deploy/mobile-node/k8s/     /opt/sdr-node/k8s/
+COPY deploy/mobile-node/configs/ /opt/sdr-node/configs/
+COPY deploy/mobile-node/entrypoint.sh /opt/sdr-node/entrypoint.sh
 RUN chmod +x /opt/sdr-node/entrypoint.sh
 
-# Persistent volumes:
-#   /var/lib/sdr      — PostgreSQL data, SQLite transcripts, demod output
-#   /var/lib/rancher/k3s — k3s state, containerd image cache
 VOLUME ["/var/lib/sdr", "/var/lib/rancher/k3s"]
 
 ENTRYPOINT ["/opt/sdr-node/entrypoint.sh"]

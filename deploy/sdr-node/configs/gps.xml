@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  GpsApp configuration — edit to match your deployment.
+  Override at runtime: -v /path/to/gps.xml:/etc/sdr-gps/gps.xml:ro,z
+-->
+<gps_logger>
+
+  <!-- AMQP message broker (Artemis) -->
+  <broker>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <!-- Topic where GPS_FIX JSON messages are published -->
+    <topic>gps.location</topic>
+  </broker>
+
+  <!-- GPSD connection (standard Linux GPS daemon) -->
+  <gpsd>
+    <host>localhost</host>
+    <port>2947</port>
+  </gpsd>
+
+  <logging>
+    <!-- JSON-lines file: one GPS_FIX record per line -->
+    <fix_log>/var/lib/sdr/gps/fixes.jsonl</fix_log>
+    <!-- How often to publish via AMQP (milliseconds) -->
+    <publish_interval_ms>1000</publish_interval_ms>
+    <!-- Minimum GPSD fix mode: 2=2D (lat/lon only), 3=3D (with altitude) -->
+    <min_fix_mode>2</min_fix_mode>
+    <!-- Node identifier included in every published message -->
+    <device_id>sdr-node</device_id>
+  </logging>
+
+</gps_logger>
