@@ -45,7 +45,7 @@ RUN dnf install -y epel-release && \
     && dnf clean all
 
 # ── libiio + SoapyPlutoSDR (not in EPEL; built from source) ──────────────────
-RUN dnf install -y libusb1-devel libxml2-devel cmake gcc-c++ git && \
+RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git && \
     git clone --depth 1 --branch v0.26 \
         https://github.com/analogdevicesinc/libiio.git /tmp/libiio && \
     cmake -B /tmp/libiio-build -S /tmp/libiio \
@@ -66,7 +66,7 @@ RUN dnf install -y libusb1-devel libxml2-devel cmake gcc-c++ git && \
     cmake --install /tmp/SoapyPlutoSDR-build && \
     ldconfig && \
     rm -rf /tmp/libiio /tmp/libiio-build /tmp/SoapyPlutoSDR /tmp/SoapyPlutoSDR-build && \
-    dnf remove -y libusb1-devel libxml2-devel cmake gcc-c++ git && \
+    dnf remove -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git && \
     dnf clean all
 
 # ── GitHub CLI (for release asset downloads) ─────────────────────────────────
