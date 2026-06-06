@@ -53,6 +53,7 @@ RUN dnf install -y libusb1-devel libxml2-devel cmake gcc-c++ git && \
         -DWITH_USB_BACKEND=ON \
         -DWITH_NETWORK_BACKEND=ON \
         -DWITH_LOCAL_BACKEND=OFF \
+        -DWITH_IIOD=OFF \
         -DBUILD_TESTING=OFF && \
     cmake --build /tmp/libiio-build --parallel && \
     cmake --install /tmp/libiio-build && \
