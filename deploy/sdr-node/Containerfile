@@ -25,7 +25,7 @@ ENV LANG=C.UTF-8
 
 # ── Runtime library dependencies for SDR binaries ────────────────────────────
 RUN dnf install -y epel-release && \
-    dnf install -y \
+    dnf install -y --allowerasing \
         SoapySDR \
         qpid-proton-cpp \
         tinyxml2 \
@@ -42,8 +42,16 @@ RUN dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.rep
     dnf install -y gh && \
     dnf clean all
 
-# ── k3s ──────────────────────────────────────────────────────────────────────
-RUN curl -sfL https://get.k3s.io | INSTALL_K3S_SKIP_START=true sh -
+# ── k3s (binary only — no systemd needed at runtime) ─────────────────────────
+RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
+    K3S_BIN=$([ "$ARCH" = "amd64" ] && echo "k3s" || echo "k3s-${ARCH}") && \
+    TAG=$(curl -sfL https://api.github.com/repos/k3s-io/k3s/releases/latest \
+          | grep -m1 '"tag_name"' | cut -d'"' -f4) && \
+    ENCODED_TAG=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$TAG") && \
+    curl -sfL "https://github.com/k3s-io/k3s/releases/download/${ENCODED_TAG}/${K3S_BIN}" \
+         -o /usr/local/bin/k3s && \
+    chmod +x /usr/local/bin/k3s && \
+    mkdir -p /var/lib/rancher/k3s /etc/rancher/k3s
 
 # ── Bundle manifests and default configs ─────────────────────────────────────
 COPY deploy/sdr-node/k8s/     /opt/sdr-node/k8s/
