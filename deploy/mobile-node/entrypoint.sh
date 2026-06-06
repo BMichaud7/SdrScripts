@@ -99,13 +99,18 @@ mkdir -p /etc/sdr-gps
     && log "Installed default config: /etc/sdr-gps/gps.xml"
 
 # ── Start k3s ─────────────────────────────────────────────────────────────────
-log "Starting k3s server …"
+# K3S_HTTPS_PORT defaults to 6444 so mobile can coexist with sdr-node (6443)
+# on the same host without a port conflict. Override with -e K3S_HTTPS_PORT=6443
+# when running mobile standalone.
+K3S_HTTPS_PORT=${K3S_HTTPS_PORT:-6444}
+log "Starting k3s server (port ${K3S_HTTPS_PORT}) …"
 k3s server \
     --disable=traefik \
     --disable=servicelb \
     --disable=metrics-server \
     --snapshotter=native \
     --data-dir=/var/lib/rancher/k3s \
+    --https-listen-port="${K3S_HTTPS_PORT}" \
     &
 K3S_PID=$!
 
