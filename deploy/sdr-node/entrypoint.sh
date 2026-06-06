@@ -97,6 +97,13 @@ for cfg in devices.xml scanner.xml analysis.xml node.conf; do
         && log "Installed default config: $SDR_ETC/$cfg"
 done
 
+# demod and speech use their own config dirs
+mkdir -p /etc/sdr-demod /etc/sdr-speech
+[[ ! -f /etc/sdr-demod/demod.xml ]] && cp "$CONFIG_DIR/demod.xml" /etc/sdr-demod/demod.xml \
+    && log "Installed default config: /etc/sdr-demod/demod.xml"
+[[ ! -f /etc/sdr-speech/speech.xml ]] && cp "$CONFIG_DIR/speech.xml" /etc/sdr-speech/speech.xml \
+    && log "Installed default config: /etc/sdr-speech/speech.xml"
+
 # ── Start k3s ─────────────────────────────────────────────────────────────────
 log "Starting k3s server …"
 k3s server \
@@ -156,8 +163,8 @@ start_service() {
 [[ "$ENABLE_SDR_CONTROLLER"  == "true" ]] && start_service sdr-controller  sdr_controller  "$SDR_ETC/devices.xml"
 [[ "$ENABLE_SDR_ACQUISITION" == "true" ]] && start_service sdr-acquisition sdr_acquisition "$SDR_ETC/scanner.xml"
 [[ "$ENABLE_SDR_ANALYSIS"    == "true" ]] && start_service sdr-analysis    sdr_analysis    "$SDR_ETC/analysis.xml"
-[[ "$ENABLE_SDR_DEMOD"       == "true" ]] && start_service sdr-demod       sdr_demod
-[[ "$ENABLE_SDR_SPEECH"      == "true" ]] && start_service sdr-speech      sdr_speech
+[[ "$ENABLE_SDR_DEMOD"       == "true" ]] && start_service sdr-demod       sdr_demod  /etc/sdr-demod/demod.xml
+[[ "$ENABLE_SDR_SPEECH"      == "true" ]] && start_service sdr-speech      sdr_speech /etc/sdr-speech/speech.xml
 
 ok "All services started"
 k3s kubectl get pods -n sdr-system

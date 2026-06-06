@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<speech_app version="1.0">
+
+  <amqp>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <!-- Topic published by DemodApp -->
+    <demod_topic>rf.demod</demod_topic>
+    <!-- Reserved for future publish support -->
+    <speech_topic>rf.speech</speech_topic>
+  </amqp>
+
+  <vad>
+    <!-- Silero-VAD speech probability threshold (0–1) -->
+    <threshold>0.5</threshold>
+    <!-- Ignore audio shorter than this (ms) -->
+    <min_speech_ms>250</min_speech_ms>
+    <!-- Merge silence gaps shorter than this (ms) -->
+    <min_silence_ms>100</min_silence_ms>
+  </vad>
+
+  <transcript>
+    <!-- Set enabled=false to disable persistence entirely -->
+    <enabled>true</enabled>
+    <!-- Directory for daily rolling text logs (transcript_YYYY-MM-DD.txt) -->
+    <dir>/var/lib/sdr/transcripts</dir>
+    <!-- SQLite database for queryable history -->
+    <db_path>/var/lib/sdr/transcripts/transcripts.db</db_path>
+    <!-- Delete text logs older than this many days (DB is kept indefinitely) -->
+    <rotate_days>30</rotate_days>
+  </transcript>
+
+  <transcriber>
+    <!-- faster-whisper model size: tiny | base | small | medium | large -->
+    <model>base</model>
+    <!-- Language code (e.g. "en") or leave empty for auto-detect -->
+    <language></language>
+    <!-- Device: auto | cpu | cuda -->
+    <device>auto</device>
+    <!-- Compute type: auto | int8 | float16 | float32 -->
+    <compute_type>auto</compute_type>
+    <!-- Whisper beam search width (higher = more accurate, slower) -->
+    <beam_size>5</beam_size>
+    <!-- Publish transcription to speech_topic (reserved for future use) -->
+    <publish_enabled>false</publish_enabled>
+  </transcriber>
+
+</speech_app>

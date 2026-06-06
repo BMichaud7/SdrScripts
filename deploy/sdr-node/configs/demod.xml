@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<demod_config>
+
+  <broker>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <!-- Subscribe: explicit demodulation requests from AnalysisApp or a user app -->
+    <demod_request_queue>rf.demod.request</demod_request_queue>
+    <!-- Publish IQ task requests to SdrResourceManager -->
+    <task_request_queue>sdr.tasks</task_request_queue>
+    <!-- Publish demodulated output (audio/bits/raw) -->
+    <demod_topic>rf.demod</demod_topic>
+  </broker>
+
+  <!-- IP of this host — used for SdrResourceManager to stream IQ back -->
+  <streaming>
+    <local_ip>127.0.0.1</local_ip>
+  </streaming>
+
+  <output>
+    <!-- Directory for WAV files (audio) and .bits files (digital) -->
+    <output_dir>/var/lib/sdr/demod-output</output_dir>
+    <!-- Also publish results to rf.demod AMQP topic -->
+    <publish_amqp>true</publish_amqp>
+  </output>
+
+  <engine>
+    <!-- Task rank: higher = higher priority; scanner=1, analysis=2, demod=4 -->
+    <rank>4</rank>
+    <!-- IQ collection window for analog (audio) signals -->
+    <audio_duration_ms>5000</audio_duration_ms>
+    <!-- IQ collection window for digital signals -->
+    <digital_duration_ms>2000</digital_duration_ms>
+    <!-- Output sample rate for WAV files -->
+    <audio_sample_rate_hz>48000</audio_sample_rate_hz>
+  </engine>
+
+
+  <!-- ── Threat detection validators ──────────────────────────────────────── -->
+  <!-- Master switch: must be true for any validator to run.
+       Individual flags let you enable only the protocols you care about.
+       Alerts published to rf.alerts, persisted to rf_alerts PostgreSQL table.
+
+       Query recent alerts:
+         SELECT * FROM recent_alerts;  -->
+  <threat>
+    <enabled>false</enabled>
+
+    <!-- ADS-B: impossible altitude (>60 000 ft) or groundspeed (>700 kt)
+         → ADSB_SPOOFING HIGH; CRC failure rate >80% → ADSB_JAMMING HIGH -->
+    <adsb_enabled>true</adsb_enabled>
+
+    <!-- AIS: speed over ground >50 kt or invalid MMSI → AIS_SPOOFING -->
+    <ais_enabled>true</ais_enabled>
+
+    <!-- EAS/SAME: invalid FCC originator code or rare national event
+         (EAN/NPT/EVI/CDW/VOW/EQW) → EAS_SPOOFING -->
+    <eas_enabled>true</eas_enabled>
+
+    <!-- DSC: distress (cat 112) with invalid MMSI → DSC_SPOOFING CRITICAL.
+         All distress calls also logged at MEDIUM severity for review. -->
+    <dsc_enabled>true</dsc_enabled>
+
+    <!-- P25: WACN or SYS_ID changes mid-session → P25_ROGUE_SITE HIGH -->
+    <p25_rogue_enabled>true</p25_rogue_enabled>
+
+    <!-- AMQP topic for alert messages (must match scanner.xml <alert_topic>) -->
+    <alert_topic>rf.alerts</alert_topic>
+  </threat>
+
+</demod_config>
