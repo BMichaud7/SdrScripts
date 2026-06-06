@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sdr-demod
+  namespace: sdr-system
+  labels:
+    app: sdr-demod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sdr-demod
+  template:
+    metadata:
+      labels:
+        app: sdr-demod
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext:
+        runAsUser: 0
+      containers:
+        - name: sdr-demod
+          image: docker.io/rockylinux:9-minimal
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/sdr_demod"]
+          env:
+            - name: SDR_LOG_LEVEL
+              value: info
+            - name: LD_LIBRARY_PATH
+              value: /opt/sdr/lib64
+          volumeMounts:
+            - name: sdr-bin
+              mountPath: /usr/bin/sdr_demod
+            - name: sdr-lib64
+              mountPath: /opt/sdr/lib64
+            - name: demod-output
+              mountPath: /var/lib/sdr/demod-output
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "128Mi"
+            limits:
+              cpu: "2"
+              memory: "512Mi"
+      volumes:
+        - name: sdr-bin
+          hostPath:
+            path: /usr/bin/sdr_demod
+            type: File
+        - name: sdr-lib64
+          hostPath:
+            path: /usr/lib64
+            type: Directory
+        - name: demod-output
+          hostPath:
+            path: /var/lib/sdr/demod-output
+            type: DirectoryOrCreate

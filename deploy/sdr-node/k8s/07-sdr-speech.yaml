@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sdr-speech
+  namespace: sdr-system
+  labels:
+    app: sdr-speech
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sdr-speech
+  template:
+    metadata:
+      labels:
+        app: sdr-speech
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext:
+        runAsUser: 0
+      containers:
+        - name: sdr-speech
+          image: docker.io/rockylinux:9-minimal
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/sdr_speech"]
+          env:
+            - name: SDR_LOG_LEVEL
+              value: info
+            - name: LD_LIBRARY_PATH
+              value: /opt/sdr/lib64
+          volumeMounts:
+            - name: sdr-bin
+              mountPath: /usr/bin/sdr_speech
+            - name: sdr-lib64
+              mountPath: /opt/sdr/lib64
+            - name: speech-output
+              mountPath: /var/lib/sdr/speech-output
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "2"
+              memory: "1Gi"
+      volumes:
+        - name: sdr-bin
+          hostPath:
+            path: /usr/bin/sdr_speech
+            type: File
+        - name: sdr-lib64
+          hostPath:
+            path: /usr/lib64
+            type: Directory
+        - name: speech-output
+          hostPath:
+            path: /var/lib/sdr/speech-output
+            type: DirectoryOrCreate

@@ -1,0 +1,47 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: artemis
+  namespace: sdr-system
+  labels:
+    app: artemis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: artemis
+  template:
+    metadata:
+      labels:
+        app: artemis
+    spec:
+      # Share the node's network so SDR binaries reach broker on localhost:5672
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: artemis
+          image: docker.io/apache/activemq-artemis:latest-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ARTEMIS_USER
+              value: sdr_ctrl
+            - name: ARTEMIS_PASSWORD
+              value: sdr_hw_test
+            - name: ANONYMOUS_LOGIN
+              value: "false"
+          ports:
+            - containerPort: 5672   # AMQP
+            - containerPort: 8161   # Web console
+          readinessProbe:
+            tcpSocket:
+              port: 5672
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"

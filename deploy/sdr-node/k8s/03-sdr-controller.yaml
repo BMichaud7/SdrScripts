@@ -1,0 +1,69 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sdr-controller
+  namespace: sdr-system
+  labels:
+    app: sdr-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sdr-controller
+  template:
+    metadata:
+      labels:
+        app: sdr-controller
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # Privileged: SdrResourceManager needs direct USB/device access for SoapySDR
+      securityContext:
+        runAsUser: 0
+      containers:
+        - name: sdr-controller
+          image: docker.io/rockylinux:9-minimal
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/sdr_controller"]
+          args: ["--config", "/etc/sdr/devices.xml"]
+          env:
+            - name: SDR_LOG_LEVEL
+              value: info
+            - name: LD_LIBRARY_PATH
+              value: /opt/sdr/lib64
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: sdr-bin
+              mountPath: /usr/bin/sdr_controller
+            - name: sdr-lib64
+              mountPath: /opt/sdr/lib64
+            - name: sdr-etc
+              mountPath: /etc/sdr
+            - name: dev
+              mountPath: /dev
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+      volumes:
+        - name: sdr-bin
+          hostPath:
+            path: /usr/bin/sdr_controller
+            type: File
+        - name: sdr-lib64
+          hostPath:
+            path: /usr/lib64
+            type: Directory
+        - name: sdr-etc
+          hostPath:
+            path: /etc/sdr
+            type: Directory
+        - name: dev
+          hostPath:
+            path: /dev
+            type: Directory

@@ -1,0 +1,59 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# OpenRFStack — All-in-one SDR Node
+# Rocky Linux 9 headless + k3s orchestrator
+#
+# First run: pulls latest RPMs from GitHub Releases and installs them.
+# Subsequent runs: RPMs already installed, starts k3s and applies manifests.
+#
+# Build (from SdrScripts/):
+#   podman build -t openrfstack-node:latest -f deploy/sdr-node/Containerfile .
+#
+# Run:
+#   podman run -d --name sdr-node \
+#     --privileged \
+#     --network host \
+#     -v sdr-data:/var/lib/sdr:z \
+#     -v sdr-k3s:/var/lib/rancher/k3s:z \
+#     openrfstack-node:latest
+#
+# To override device config (e.g. for RTL-SDR instead of PlutoSDR):
+#   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
+# ══════════════════════════════════════════════════════════════════════════════
+FROM rockylinux:9
+
+ENV LANG=C.UTF-8
+
+# ── Runtime library dependencies for SDR binaries ────────────────────────────
+RUN dnf install -y epel-release && \
+    dnf install -y \
+        SoapySDR \
+        qpid-proton-cpp \
+        tinyxml2 \
+        spdlog \
+        fmt \
+        fftw \
+        libpq \
+        curl \
+        procps-ng \
+    && dnf clean all
+
+# ── GitHub CLI (for release asset downloads) ─────────────────────────────────
+RUN dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo && \
+    dnf install -y gh && \
+    dnf clean all
+
+# ── k3s ──────────────────────────────────────────────────────────────────────
+RUN curl -sfL https://get.k3s.io | INSTALL_K3S_SKIP_START=true sh -
+
+# ── Bundle manifests and default configs ─────────────────────────────────────
+COPY deploy/sdr-node/k8s/     /opt/sdr-node/k8s/
+COPY deploy/sdr-node/configs/ /opt/sdr-node/configs/
+COPY deploy/sdr-node/entrypoint.sh /opt/sdr-node/entrypoint.sh
+RUN chmod +x /opt/sdr-node/entrypoint.sh
+
+# Persistent volumes:
+#   /var/lib/sdr      — PostgreSQL data, SQLite transcripts, demod output
+#   /var/lib/rancher/k3s — k3s state, containerd image cache
+VOLUME ["/var/lib/sdr", "/var/lib/rancher/k3s"]
+
+ENTRYPOINT ["/opt/sdr-node/entrypoint.sh"]
