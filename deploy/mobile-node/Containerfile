@@ -22,9 +22,10 @@
 #     -v sdr-k3s:/var/lib/rancher/k3s:z \
 #     openrfstack-mobile:latest
 #
-# GPS: mount serial GPS device with --device /dev/ttyUSB0 (or ttyACM0)
-#   and ensure gpsd is running (pass -v /run/gpsd.sock:/run/gpsd.sock:z
-#   if using host gpsd, or the container will try localhost:2947).
+# GPS: gpsd must run on the HOST (not in this container).
+#   Install on host: sudo dnf install gpsd gpsd-clients
+#   Start: sudo gpsd /dev/ttyUSB0 -F /var/run/gpsd.sock
+#   GpsApp connects via --network host to localhost:2947.
 # Override device config for RTL-SDR:
 #   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
 # ══════════════════════════════════════════════════════════════════════════════
@@ -33,8 +34,7 @@ FROM rockylinux:9
 ENV LANG=C.UTF-8
 
 # ── Runtime library dependencies for SDR binaries ────────────────────────────
-RUN dnf install -y epel-release epel-next-release dnf-plugins-core && \
-    dnf config-manager --enable crb && \
+RUN dnf install -y epel-release && \
     dnf install -y --allowerasing \
         SoapySDR \
         qpid-proton-cpp \
@@ -46,7 +46,6 @@ RUN dnf install -y epel-release epel-next-release dnf-plugins-core && \
         curl \
         procps-ng \
         cyrus-sasl-plain \
-        gpsd \
     && dnf clean all
 
 # ── libiio + SoapyPlutoSDR (not in EPEL; built from source) ──────────────────
