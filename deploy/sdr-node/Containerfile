@@ -11,11 +11,15 @@
 # Run:
 #   podman run -d --name sdr-node \
 #     --privileged \
+#     --cgroupns=host \
 #     --network host \
+#     -e GITHUB_TOKEN=<your-token> \
 #     -v sdr-data:/var/lib/sdr:z \
 #     -v sdr-k3s:/var/lib/rancher/k3s:z \
 #     openrfstack-node:latest
 #
+# To override which services run (edit node.conf, then mount it):
+#   -v /path/to/node.conf:/etc/sdr/node.conf:ro,z
 # To override device config (e.g. for RTL-SDR instead of PlutoSDR):
 #   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
 # ══════════════════════════════════════════════════════════════════════════════
