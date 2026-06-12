@@ -9,3 +9,6 @@ signals.db
 docs/html/
 docs/master/
 build/
+
+# Python
+__pycache__/
