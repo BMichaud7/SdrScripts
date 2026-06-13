@@ -34,7 +34,7 @@ FROM rockylinux:9
 ENV LANG=C.UTF-8
 
 # ── Runtime library dependencies for SDR binaries ────────────────────────────
-RUN dnf install -y epel-release epel-next-release dnf-plugins-core && \
+RUN dnf install -y epel-release dnf-plugins-core && \
     dnf config-manager --enable crb && \
     dnf install -y --allowerasing \
         SoapySDR \
