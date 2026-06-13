@@ -47,7 +47,7 @@ RUN dnf install -y epel-release dnf-plugins-core && \
         curl \
         procps-ng \
         cyrus-sasl-plain \
-        gpsd \
+        gpsd-minimal \
     && dnf clean all
 
 # ── libiio + SoapyPlutoSDR (not in EPEL; built from source) ──────────────────
