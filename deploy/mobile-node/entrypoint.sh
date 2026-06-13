@@ -153,9 +153,11 @@ start_service() {
     fi
     log "Starting $name …"
     (
+        set +e
         while true; do
             "/usr/bin/$bin" "${args[@]}" >> "$LOG_DIR/${name}.log" 2>&1
-            warn "$name exited (code $?) — restarting in 3s"
+            rc=$?
+            warn "$name exited (code $rc) — restarting in 3s"
             sleep 3
         done
     ) &
