@@ -98,6 +98,16 @@ mkdir -p /etc/sdr-gps
 [[ ! -f /etc/sdr-gps/gps.xml ]] && cp "$CONFIG_DIR/gps.xml" /etc/sdr-gps/gps.xml \
     && log "Installed default config: /etc/sdr-gps/gps.xml"
 
+# ── GPS daemon (gpsd) ────────────────────────────────────────────────────────
+GPS_SERIAL_DEVICE=${GPS_SERIAL_DEVICE:-/dev/ttyACM0}
+if [[ "$ENABLE_SDR_GPS" == "true" && -e "$GPS_SERIAL_DEVICE" ]]; then
+    log "Starting gpsd on ${GPS_SERIAL_DEVICE} …"
+    gpsd -N -n "$GPS_SERIAL_DEVICE" -F /var/run/gpsd.sock >> "$LOG_DIR/gpsd.log" 2>&1 &
+    ok "gpsd started"
+elif [[ "$ENABLE_SDR_GPS" == "true" ]]; then
+    warn "GPS enabled but ${GPS_SERIAL_DEVICE} not found — sdr-gps will retry gpsd connection"
+fi
+
 # ── Start k3s ─────────────────────────────────────────────────────────────────
 # K3S_HTTPS_PORT defaults to 6444 so mobile can coexist with sdr-node (6443)
 # on the same host without a port conflict. Override with -e K3S_HTTPS_PORT=6443

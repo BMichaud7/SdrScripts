@@ -22,19 +22,20 @@
 #     -v sdr-k3s:/var/lib/rancher/k3s:z \
 #     openrfstack-mobile:latest
 #
-# GPS: gpsd must run on the HOST (not in this container).
-#   Install on host: sudo dnf install gpsd gpsd-clients
-#   Start: sudo gpsd /dev/ttyUSB0 -F /var/run/gpsd.sock
-#   GpsApp connects via --network host to localhost:2947.
-# Override device config for RTL-SDR:
-#   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
+# GPS: pass --device /dev/ttyACM0 (or ttyUSB0) — gpsd runs inside this
+#   container against GPS_SERIAL_DEVICE (default /dev/ttyACM0) and GpsApp
+#   connects to it on localhost:2947.
+# SDR hardware: SoapyPlutoSDR and SoapyRTLSDR are both built in — pluto-0 and
+#   rtlsdr-0 are enabled by default in devices.xml (override with
+#   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z if needed).
 # ══════════════════════════════════════════════════════════════════════════════
 FROM rockylinux:9
 
 ENV LANG=C.UTF-8
 
 # ── Runtime library dependencies for SDR binaries ────────────────────────────
-RUN dnf install -y epel-release && \
+RUN dnf install -y epel-release epel-next-release dnf-plugins-core && \
+    dnf config-manager --enable crb && \
     dnf install -y --allowerasing \
         SoapySDR \
         qpid-proton-cpp \
@@ -46,6 +47,7 @@ RUN dnf install -y epel-release && \
         curl \
         procps-ng \
         cyrus-sasl-plain \
+        gpsd \
     && dnf clean all
 
 # ── libiio + SoapyPlutoSDR (not in EPEL; built from source) ──────────────────
@@ -68,8 +70,24 @@ RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git 
         -DCMAKE_INSTALL_PREFIX=/usr && \
     cmake --build /tmp/SoapyPlutoSDR-build --parallel && \
     cmake --install /tmp/SoapyPlutoSDR-build && \
+    git clone --depth 1 \
+        https://github.com/osmocom/rtl-sdr.git /tmp/rtl-sdr && \
+    cmake -B /tmp/rtl-sdr-build -S /tmp/rtl-sdr \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DDETACH_KERNEL_DRIVER=ON \
+        -DINSTALL_UDEV_RULES=OFF \
+        -DBUILD_TESTING=OFF && \
+    cmake --build /tmp/rtl-sdr-build --parallel && \
+    cmake --install /tmp/rtl-sdr-build && \
+    git clone --depth 1 \
+        https://github.com/pothosware/SoapyRTLSDR.git /tmp/SoapyRTLSDR && \
+    cmake -B /tmp/SoapyRTLSDR-build -S /tmp/SoapyRTLSDR \
+        -DCMAKE_INSTALL_PREFIX=/usr && \
+    cmake --build /tmp/SoapyRTLSDR-build --parallel && \
+    cmake --install /tmp/SoapyRTLSDR-build && \
     ldconfig && \
-    rm -rf /tmp/libiio /tmp/libiio-build /tmp/SoapyPlutoSDR /tmp/SoapyPlutoSDR-build && \
+    rm -rf /tmp/libiio /tmp/libiio-build /tmp/SoapyPlutoSDR /tmp/SoapyPlutoSDR-build \
+           /tmp/rtl-sdr /tmp/rtl-sdr-build /tmp/SoapyRTLSDR /tmp/SoapyRTLSDR-build && \
     dnf remove -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git && \
     dnf clean all
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  SdrResourceManager device config — default: PlutoSDR (USB)
+  SdrResourceManager device config — defaults: PlutoSDR (USB) and RTL-SDR (USB)
   Override at runtime: -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
 -->
 <sdr_controller version="2.0">
@@ -51,8 +51,7 @@
       </capabilities>
     </device>
 
-    <!--
-    RTL-SDR v3 / Blog v4 (install SoapyRTLSDR in container):
+    <!-- RTL-SDR v3 / Blog v4 (SoapyRTLSDR built into image) -->
     <device id="rtlsdr-0">
       <driver>rtlsdr</driver>
       <uri>driver=rtlsdr</uri>
@@ -69,7 +68,6 @@
         <rx_gain_max_db>49</rx_gain_max_db>
       </capabilities>
     </device>
-    -->
   </devices>
 
 </sdr_controller>
