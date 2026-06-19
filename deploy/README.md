@@ -61,8 +61,26 @@ both fixed in `entrypoint.sh`:
    nothing writes a CNI conf, and kubelet gates readiness on one existing
    even though every pod here uses `hostNetwork: true` and never invokes
    CNI. Fixed by dropping a dummy loopback CNI conf to `/etc/cni/net.d/`.
+4. **`AcquisitionApp` silently hangs on startup, never submits a scan task** —
+   its controller-discovery probe sends a `HEALTH_QUERY` before Artemis has
+   actually finished booting. If Artemis's image pull is slow (5-8+ min over
+   a weak/cellular link), `entrypoint.sh`'s old 180s rollout-status timeout
+   gave up and started the SDR app processes anyway; the probe's HEALTH_QUERY
+   then timed out and the process hung tearing down that AMQP channel,
+   leaving `sdr_acquisition`/`sdr_controller` running but idle (zero CPU, no
+   `rf.detections` messages ever sent). Fixed by bumping the rollout-status
+   timeout to 600s so the SDR services genuinely wait for Artemis/Postgres
+   instead of racing them. If you ever see acquisition logs go silent right
+   after `[AmqpPublisher] connected`, this is almost certainly it — killing
+   the `sdr_controller`/`sdr_acquisition`/`sdr_gps` processes (the supervisor
+   loop respawns them in ~3s) once Artemis is confirmed `1/1 Running` is the
+   immediate workaround.
 
-Also requires **rootful podman** (`sudo podman run ...`), not rootless —
-rootless can't satisfy kubelet's cgroup delegation (`mkdir
-/sys/fs/cgroup/kubepods: permission denied`) even with `--privileged
---cgroupns=host`.
+Also requires **rootful podman** (`sudo podman run ...`), not rootless.
+Tried dropping `--cgroupns=host` (which forces the container to see the
+*host's* real cgroup tree, where a rootless uid has no write access) — that
+got past the first error, but rootless then failed with `failed to find
+cpuset cgroup (v2)`: the Pi's systemd user session doesn't delegate the
+`cpuset` controller to user slices by default. Fixing that needs a host-side
+systemd drop-in (`systemctl --user` delegate config), not a container-side
+change, so rootful remains the supported path for now.

@@ -161,9 +161,14 @@ k3s kubectl apply -f "$MANIFEST_DIR/01-artemis.yaml"
 k3s kubectl apply -f "$MANIFEST_DIR/02-postgres.yaml"
 
 log "Waiting for Artemis and PostgreSQL to be ready …"
-k3s kubectl rollout status deployment/artemis -n sdr-system --timeout=180s \
+# 600s, not 180s: a cold image pull of Artemis/Postgres over a slow/cellular
+# link can take 5-8+ minutes. A premature timeout here used to let the SDR
+# app processes start before the broker was reachable — AcquisitionApp's
+# controller-discovery HEALTH_QUERY would then time out and the process
+# would hang waiting on AMQP channel teardown, never submitting a scan task.
+k3s kubectl rollout status deployment/artemis -n sdr-system --timeout=600s \
     || warn "Artemis not ready yet — continuing"
-k3s kubectl rollout status deployment/postgres -n sdr-system --timeout=180s \
+k3s kubectl rollout status deployment/postgres -n sdr-system --timeout=600s \
     || warn "PostgreSQL not ready yet — continuing"
 ok "Infrastructure ready"
 
