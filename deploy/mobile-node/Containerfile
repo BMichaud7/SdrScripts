@@ -28,6 +28,11 @@
 # SDR hardware: SoapyPlutoSDR and SoapyRTLSDR are both built in — pluto-0 and
 #   rtlsdr-0 are enabled by default in devices.xml (override with
 #   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z if needed).
+# Low-RAM boards (<=1GB, e.g. Raspberry Pi 4 1GB): add -e K3S_LITE=true to
+#   disable k3s's CNI (flannel), local-path-provisioner, network-policy
+#   controller, and cloud-controller — none are used since Artemis/Postgres
+#   run hostNetwork:true with hostPath volumes. Meaningfully cuts k3s's idle
+#   RSS with no functional difference.
 # ══════════════════════════════════════════════════════════════════════════════
 FROM rockylinux:9
 

@@ -24,6 +24,10 @@
 #   -v /path/to/node.conf:/etc/sdr/node.conf:ro,z
 # To override device config (e.g. for RTL-SDR instead of PlutoSDR):
 #   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
+# Low-RAM boards (<=1GB): add -e K3S_LITE=true to disable k3s's CNI
+#   (flannel), local-path-provisioner, network-policy controller, and
+#   cloud-controller — none are used since Artemis/Postgres run
+#   hostNetwork:true with hostPath volumes.
 # ══════════════════════════════════════════════════════════════════════════════
 FROM rockylinux:9
 

@@ -113,7 +113,16 @@ fi
 # on the same host without a port conflict. Override with -e K3S_HTTPS_PORT=6443
 # when running mobile standalone.
 K3S_HTTPS_PORT=${K3S_HTTPS_PORT:-6444}
+K3S_LITE_ARGS=""
+if [[ "${K3S_LITE:-false}" == "true" ]]; then
+    # Artemis/Postgres pods both run hostNetwork:true and mount hostPath
+    # volumes (no PVC/StorageClass), so the CNI and local-path-provisioner
+    # are dead weight here. Cuts k3s's idle RSS substantially on <=1GB boards.
+    K3S_LITE_ARGS="--flannel-backend=none --disable=local-storage --disable-network-policy --disable-cloud-controller"
+    log "K3S_LITE=true — flannel/local-storage/network-policy/cloud-controller disabled"
+fi
 log "Starting k3s server (port ${K3S_HTTPS_PORT}) …"
+# shellcheck disable=SC2086
 k3s server \
     --disable=traefik \
     --disable=servicelb \
@@ -121,6 +130,7 @@ k3s server \
     --snapshotter=native \
     --data-dir=/var/lib/rancher/k3s \
     --https-listen-port="${K3S_HTTPS_PORT}" \
+    ${K3S_LITE_ARGS} \
     &
 K3S_PID=$!
 
