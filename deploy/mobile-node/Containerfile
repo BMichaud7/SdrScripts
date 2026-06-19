@@ -8,6 +8,12 @@
 #
 # Build (from SdrScripts/):
 #   podman build -t openrfstack-mobile:latest -f deploy/mobile-node/Containerfile .
+#   podman build -t openrfstack-mobile-lite:latest --build-arg K3S_LITE=true \
+#     -f deploy/mobile-node/Containerfile .
+#
+# Published images (ghcr.io/openrfstack/):
+#   openrfstack-mobile        — full k3s (CNI/local-storage/network-policy)
+#   openrfstack-mobile-lite   — k3s trimmed for <=1GB boards (see below)
 #
 # Run:
 #   podman run -d --name sdr-mobile \
@@ -20,7 +26,7 @@
 #     -e GITHUB_TOKEN=<your-token> \
 #     -v sdr-data:/var/lib/sdr:z \
 #     -v sdr-k3s:/var/lib/rancher/k3s:z \
-#     openrfstack-mobile:latest
+#     ghcr.io/openrfstack/openrfstack-mobile:latest
 #
 # GPS: pass --device /dev/ttyACM0 (or ttyUSB0) — gpsd runs inside this
 #   container against GPS_SERIAL_DEVICE (default /dev/ttyACM0) and GpsApp
@@ -28,11 +34,13 @@
 # SDR hardware: SoapyPlutoSDR and SoapyRTLSDR are both built in — pluto-0 and
 #   rtlsdr-0 are enabled by default in devices.xml (override with
 #   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z if needed).
-# Low-RAM boards (<=1GB, e.g. Raspberry Pi 4 1GB): add -e K3S_LITE=true to
-#   disable k3s's CNI (flannel), local-path-provisioner, network-policy
-#   controller, and cloud-controller — none are used since Artemis/Postgres
-#   run hostNetwork:true with hostPath volumes. Meaningfully cuts k3s's idle
-#   RSS with no functional difference.
+# Low-RAM boards (<=1GB, e.g. Raspberry Pi 4 1GB): use the -lite image
+#   (ghcr.io/openrfstack/openrfstack-mobile-lite) — it disables k3s's CNI
+#   (flannel), local-path-provisioner, network-policy controller, and
+#   cloud-controller — none are used since Artemis/Postgres run
+#   hostNetwork:true with hostPath volumes. Meaningfully cuts k3s's idle
+#   RSS with no functional difference. (Can also still be forced at runtime
+#   on either image with -e K3S_LITE=true.)
 # ══════════════════════════════════════════════════════════════════════════════
 FROM rockylinux:9
 

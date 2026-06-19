@@ -7,6 +7,12 @@
 #
 # Build (from SdrScripts/):
 #   podman build -t openrfstack-node:latest -f deploy/sdr-node/Containerfile .
+#   podman build -t openrfstack-node-lite:latest --build-arg K3S_LITE=true \
+#     -f deploy/sdr-node/Containerfile .
+#
+# Published images (ghcr.io/openrfstack/):
+#   openrfstack-node        — full k3s (CNI/local-storage/network-policy)
+#   openrfstack-node-lite   — k3s trimmed for <=1GB boards (see below)
 #
 # Run:
 #   podman run -d --name sdr-node \
@@ -18,16 +24,18 @@
 #     -e GITHUB_TOKEN=<your-token> \
 #     -v sdr-data:/var/lib/sdr:z \
 #     -v sdr-k3s:/var/lib/rancher/k3s:z \
-#     openrfstack-node:latest
+#     ghcr.io/openrfstack/openrfstack-node:latest
 #
 # To override which services run (edit node.conf, then mount it):
 #   -v /path/to/node.conf:/etc/sdr/node.conf:ro,z
 # To override device config (e.g. for RTL-SDR instead of PlutoSDR):
 #   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
-# Low-RAM boards (<=1GB): add -e K3S_LITE=true to disable k3s's CNI
+# Low-RAM boards (<=1GB): use the -lite image
+#   (ghcr.io/openrfstack/openrfstack-node-lite) — it disables k3s's CNI
 #   (flannel), local-path-provisioner, network-policy controller, and
 #   cloud-controller — none are used since Artemis/Postgres run
-#   hostNetwork:true with hostPath volumes.
+#   hostNetwork:true with hostPath volumes. (Can also still be forced at
+#   runtime on either image with -e K3S_LITE=true.)
 # ══════════════════════════════════════════════════════════════════════════════
 FROM rockylinux:9
 

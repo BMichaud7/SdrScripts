@@ -48,7 +48,7 @@ jobs:
           build-args: |
             K3S_LITE=${{ matrix.variant == 'lite' && 'true' || 'false' }}
           push: true
-          tags: ghcr.io/openrfstack/openrfstack-recon:${{ github.sha }}-${{ matrix.variant }}-${{ matrix.target.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          tags: ghcr.io/openrfstack/openrfstack-recon${{ matrix.variant == 'lite' && '-lite' || '' }}:${{ github.sha }}-${{ matrix.target.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
           cache-from: type=gha,scope=recon-${{ matrix.variant }}-${{ matrix.target.platform }}
           cache-to: type=gha,scope=recon-${{ matrix.variant }}-${{ matrix.target.platform }},mode=max
 
@@ -70,17 +70,17 @@ jobs:
 
       - name: Create and push multi-arch manifest
         run: |
-          LATEST_TAG="${{ matrix.variant == 'lite' && 'lite' || 'latest' }}"
-          SHA_TAG="${{ github.sha }}${{ matrix.variant == 'lite' && '-lite' || '' }}"
+          PKG="openrfstack-recon${{ matrix.variant == 'lite' && '-lite' || '' }}"
           docker buildx imagetools create \
-            --tag "ghcr.io/openrfstack/openrfstack-recon:${LATEST_TAG}" \
-            --tag "ghcr.io/openrfstack/openrfstack-recon:${SHA_TAG}" \
-            "ghcr.io/openrfstack/openrfstack-recon:${{ github.sha }}-${{ matrix.variant }}-amd64" \
-            "ghcr.io/openrfstack/openrfstack-recon:${{ github.sha }}-${{ matrix.variant }}-arm64"
+            --tag "ghcr.io/openrfstack/${PKG}:latest" \
+            --tag "ghcr.io/openrfstack/${PKG}:${{ github.sha }}" \
+            "ghcr.io/openrfstack/${PKG}:${{ github.sha }}-amd64" \
+            "ghcr.io/openrfstack/${PKG}:${{ github.sha }}-arm64"
 
       - name: Make package public
         run: |
-          gh api -X PATCH /orgs/openrfstack/packages/container/openrfstack-recon \
+          PKG="openrfstack-recon${{ matrix.variant == 'lite' && '-lite' || '' }}"
+          gh api -X PATCH "/orgs/openrfstack/packages/container/${PKG}" \
             -f visibility=public 2>/dev/null || \
           echo "Note: set package visibility to Public manually at https://github.com/orgs/OpenRFStack/packages"
         env:
