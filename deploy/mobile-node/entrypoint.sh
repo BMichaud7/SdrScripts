@@ -130,6 +130,7 @@ k3s server \
     --snapshotter=native \
     --data-dir=/var/lib/rancher/k3s \
     --https-listen-port="${K3S_HTTPS_PORT}" \
+    --kubelet-arg="feature-gates=KubeletInUserNamespace=true" \
     ${K3S_LITE_ARGS} \
     &
 K3S_PID=$!
