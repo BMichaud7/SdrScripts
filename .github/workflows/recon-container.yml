@@ -70,10 +70,11 @@ jobs:
 
       - name: Create and push multi-arch manifest
         run: |
-          TAG_SUFFIX="${{ matrix.variant == 'lite' && '-lite' || '' }}"
+          LATEST_TAG="${{ matrix.variant == 'lite' && 'lite' || 'latest' }}"
+          SHA_TAG="${{ github.sha }}${{ matrix.variant == 'lite' && '-lite' || '' }}"
           docker buildx imagetools create \
-            --tag "ghcr.io/openrfstack/openrfstack-recon:latest${TAG_SUFFIX}" \
-            --tag "ghcr.io/openrfstack/openrfstack-recon:${{ github.sha }}${TAG_SUFFIX}" \
+            --tag "ghcr.io/openrfstack/openrfstack-recon:${LATEST_TAG}" \
+            --tag "ghcr.io/openrfstack/openrfstack-recon:${SHA_TAG}" \
             "ghcr.io/openrfstack/openrfstack-recon:${{ github.sha }}-${{ matrix.variant }}-amd64" \
             "ghcr.io/openrfstack/openrfstack-recon:${{ github.sha }}-${{ matrix.variant }}-arm64"
 
