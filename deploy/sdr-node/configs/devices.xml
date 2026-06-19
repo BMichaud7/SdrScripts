@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  SdrResourceManager device config — default: PlutoSDR (USB)
+  SdrResourceManager device config — defaults: PlutoSDR (network) and RTL-SDR (USB)
   Override at runtime: -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
 -->
 <sdr_controller version="2.0">
@@ -33,10 +33,12 @@
   </policy>
 
   <devices>
-    <!-- ADALM-PLUTO: 70 MHz – 6 GHz, up to 61.44 MSPS, USB direct via libiio -->
+    <!-- ADALM-PLUTO: 70 MHz – 6 GHz, up to 61.44 MSPS, network-attached via libiio.
+         uri is a libiio context string: "ip:<host>" for network, "usb:X.Y.Z" for
+         local USB, or empty to let SoapyPlutoSDR auto-discover over USB. -->
     <device id="pluto-0">
       <driver>plutosdr</driver>
-      <uri></uri>
+      <uri>ip:192.168.1.253</uri>
       <label>PlutoSDR</label>
       <streaming_source_ip>127.0.0.1</streaming_source_ip>
       <capabilities>
@@ -51,8 +53,7 @@
       </capabilities>
     </device>
 
-    <!--
-    RTL-SDR v3 / Blog v4 (install SoapyRTLSDR in container):
+    <!-- RTL-SDR v3 / Blog v4 (SoapyRTLSDR built into image) -->
     <device id="rtlsdr-0">
       <driver>rtlsdr</driver>
       <uri>driver=rtlsdr</uri>
@@ -69,7 +70,6 @@
         <rx_gain_max_db>49</rx_gain_max_db>
       </capabilities>
     </device>
-    -->
   </devices>
 
 </sdr_controller>
