@@ -13,13 +13,13 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.variant }} ${{ matrix.platform }}
-    runs-on: ${{ matrix.runner }}
+    name: Build ${{ matrix.variant }} ${{ matrix.target.platform }}
+    runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
       matrix:
         variant: [default, lite]
-        include:
+        target:
           - platform: linux/amd64
             runner: ubuntu-latest
           - platform: linux/arm64
@@ -47,13 +47,13 @@ jobs:
         with:
           context: .
           file: deploy/sdr-node/Containerfile
-          platforms: ${{ matrix.platform }}
+          platforms: ${{ matrix.target.platform }}
           build-args: |
             K3S_LITE=${{ matrix.variant == 'lite' && 'true' || 'false' }}
           push: true
-          tags: ghcr.io/openrfstack/openrfstack-node:${{ github.sha }}-${{ matrix.variant }}-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          cache-from: type=gha,scope=node-${{ matrix.variant }}-${{ matrix.platform }}
-          cache-to: type=gha,scope=node-${{ matrix.variant }}-${{ matrix.platform }},mode=max
+          tags: ghcr.io/openrfstack/openrfstack-node:${{ github.sha }}-${{ matrix.variant }}-${{ matrix.target.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          cache-from: type=gha,scope=node-${{ matrix.variant }}-${{ matrix.target.platform }}
+          cache-to: type=gha,scope=node-${{ matrix.variant }}-${{ matrix.target.platform }},mode=max
 
   merge:
     name: Create multi-arch manifest (${{ matrix.variant }})
