@@ -13,11 +13,12 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform }}
+    name: Build ${{ matrix.variant }} ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        variant: [default, lite]
         include:
           - platform: linux/amd64
             runner: ubuntu-latest
@@ -44,15 +45,20 @@ jobs:
           context: .
           file: deploy/mobile-node/Containerfile
           platforms: ${{ matrix.platform }}
+          build-args: |
+            K3S_LITE=${{ matrix.variant == 'lite' && 'true' || 'false' }}
           push: true
-          tags: ghcr.io/openrfstack/openrfstack-mobile:${{ github.sha }}-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          cache-from: type=gha,scope=mobile-${{ matrix.platform }}
-          cache-to: type=gha,scope=mobile-${{ matrix.platform }},mode=max
+          tags: ghcr.io/openrfstack/openrfstack-mobile:${{ github.sha }}-${{ matrix.variant }}-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          cache-from: type=gha,scope=mobile-${{ matrix.variant }}-${{ matrix.platform }}
+          cache-to: type=gha,scope=mobile-${{ matrix.variant }}-${{ matrix.platform }},mode=max
 
   merge:
-    name: Create multi-arch manifest
+    name: Create multi-arch manifest (${{ matrix.variant }})
     runs-on: ubuntu-latest
     needs: build
+    strategy:
+      matrix:
+        variant: [default, lite]
 
     steps:
       - name: Log in to GHCR
@@ -64,11 +70,12 @@ jobs:
 
       - name: Create and push multi-arch manifest
         run: |
+          TAG_SUFFIX="${{ matrix.variant == 'lite' && '-lite' || '' }}"
           docker buildx imagetools create \
-            --tag ghcr.io/openrfstack/openrfstack-mobile:latest \
-            --tag ghcr.io/openrfstack/openrfstack-mobile:${{ github.sha }} \
-            ghcr.io/openrfstack/openrfstack-mobile:${{ github.sha }}-amd64 \
-            ghcr.io/openrfstack/openrfstack-mobile:${{ github.sha }}-arm64
+            --tag "ghcr.io/openrfstack/openrfstack-mobile:latest${TAG_SUFFIX}" \
+            --tag "ghcr.io/openrfstack/openrfstack-mobile:${{ github.sha }}${TAG_SUFFIX}" \
+            "ghcr.io/openrfstack/openrfstack-mobile:${{ github.sha }}-${{ matrix.variant }}-amd64" \
+            "ghcr.io/openrfstack/openrfstack-mobile:${{ github.sha }}-${{ matrix.variant }}-arm64"
 
       - name: Make package public
         run: |

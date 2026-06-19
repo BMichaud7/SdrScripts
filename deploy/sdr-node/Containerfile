@@ -33,6 +33,11 @@ FROM rockylinux:9
 
 ENV LANG=C.UTF-8
 
+# K3S_LITE=true bakes the low-RAM k3s defaults into the image (see
+# entrypoint.sh) — still overridable at `podman run` time with -e K3S_LITE=.
+ARG K3S_LITE=false
+ENV K3S_LITE=${K3S_LITE}
+
 # ── Runtime library dependencies for SDR binaries ────────────────────────────
 RUN dnf install -y epel-release && \
     dnf install -y --allowerasing \
