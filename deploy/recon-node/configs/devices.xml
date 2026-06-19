@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SdrResourceManager device config — defaults: PlutoSDR (USB) and RTL-SDR (USB)
+  Override at runtime: -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z
+-->
+<sdr_controller version="2.0">
+
+  <broker>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <request_queue>sdr.task.request</request_queue>
+    <response_queue>sdr.task.response</response_queue>
+    <status_topic>sdr.status</status_topic>
+    <health_topic>sdr.health</health_topic>
+    <reconnect_interval_sec>5</reconnect_interval_sec>
+    <max_reconnect_interval_sec>30</max_reconnect_interval_sec>
+    <send_queue_depth>512</send_queue_depth>
+  </broker>
+
+  <policy>
+    <max_concurrent_tasks>4</max_concurrent_tasks>
+    <guard_band_hz>200000</guard_band_hz>
+    <usable_bw_fraction>0.80</usable_bw_fraction>
+    <default_task_timeout_ms>120000</default_task_timeout_ms>
+    <scheduler_tick_ms>200</scheduler_tick_ms>
+    <watchdog_tick_ms>1000</watchdog_tick_ms>
+    <udp_port_pool_start>30000</udp_port_pool_start>
+    <udp_port_pool_end>30099</udp_port_pool_end>
+    <iq_packet_samples>256</iq_packet_samples>
+    <retune_conflict_policy>REJECT_NEW</retune_conflict_policy>
+    <heartbeat_interval_ms>10000</heartbeat_interval_ms>
+  </policy>
+
+  <devices>
+    <!-- ADALM-PLUTO: 70 MHz – 6 GHz, up to 61.44 MSPS, USB direct via libiio -->
+    <device id="pluto-0">
+      <driver>plutosdr</driver>
+      <uri></uri>
+      <label>PlutoSDR</label>
+      <streaming_source_ip>127.0.0.1</streaming_source_ip>
+      <capabilities>
+        <rx_channels>2</rx_channels>
+        <tx_channels>2</tx_channels>
+        <freq_min_hz>70000000</freq_min_hz>
+        <freq_max_hz>6000000000</freq_max_hz>
+        <bandwidth_max_hz>20000000</bandwidth_max_hz>
+        <sample_rate_max_sps>61440000</sample_rate_max_sps>
+        <rx_gain_min_db>-3</rx_gain_min_db>
+        <rx_gain_max_db>71</rx_gain_max_db>
+      </capabilities>
+    </device>
+
+    <!-- RTL-SDR v3 / Blog v4 (SoapyRTLSDR built into image) -->
+    <device id="rtlsdr-0">
+      <driver>rtlsdr</driver>
+      <uri>driver=rtlsdr</uri>
+      <label>RTL-SDR</label>
+      <streaming_source_ip>127.0.0.1</streaming_source_ip>
+      <capabilities>
+        <rx_channels>1</rx_channels>
+        <tx_channels>0</tx_channels>
+        <freq_min_hz>500000</freq_min_hz>
+        <freq_max_hz>1700000000</freq_max_hz>
+        <bandwidth_max_hz>3200000</bandwidth_max_hz>
+        <sample_rate_max_sps>3200000</sample_rate_max_sps>
+        <rx_gain_min_db>0</rx_gain_min_db>
+        <rx_gain_max_db>49</rx_gain_max_db>
+      </capabilities>
+    </device>
+  </devices>
+
+</sdr_controller>

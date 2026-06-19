@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdr_acquisition version="2.0">
+  <scanner_id>scanner-0</scanner_id>
+
+  <amqp>
+    <url>amqp://localhost:5672</url>
+    <username>sdr_ctrl</username>
+    <password>sdr_hw_test</password>
+    <detection_topic>rf.detections</detection_topic>
+    <task_request_queue>sdr.task.request</task_request_queue>
+    <task_response_queue>sdr.task.response</task_response_queue>
+    <reconnect_interval_sec>5</reconnect_interval_sec>
+  </amqp>
+
+  <database>
+    <host>localhost</host>
+    <port>5432</port>
+    <name>sdr_scanner</name>
+    <user>sdr</user>
+    <password>sdr_hw_test</password>
+  </database>
+
+  <device>
+    <rx_channels>1</rx_channels>
+    <sample_rate_sps>2400000</sample_rate_sps>
+    <rx_gain_db>40</rx_gain_db>
+    <bandwidth_hz>2400000</bandwidth_hz>
+  </device>
+
+  <sweep>
+    <!-- 80 MHz – 1 GHz default; override with SDR_SWEEP_START_HZ / SDR_SWEEP_STOP_HZ -->
+    <start_hz>80000000</start_hz>
+    <stop_hz>1000000000</stop_hz>
+    <dwell_samples>131072</dwell_samples>
+    <fft_size>4096</fft_size>
+    <usable_bw_fraction>0.80</usable_bw_fraction>
+    <threshold_db>6.0</threshold_db>
+    <min_signal_bw_hz>12000</min_signal_bw_hz>
+    <settle_samples>256</settle_samples>
+    <dc_guard_hz>75000</dc_guard_hz>
+    <cfar_guard_bins>8</cfar_guard_bins>
+    <cfar_ref_bins>32</cfar_ref_bins>
+    <min_papr_db>3.0</min_papr_db>
+    <noise_floor_alpha>0.08</noise_floor_alpha>
+  </sweep>
+
+  <rank>2</rank>
+  <analysis_pause_ms>3000</analysis_pause_ms>
+
+  <receiver>
+    <local_ip>127.0.0.1</local_ip>
+    <port>0</port>
+  </receiver>
+</sdr_acquisition>

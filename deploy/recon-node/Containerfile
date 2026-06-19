@@ -1,0 +1,153 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# OpenRFStack — Recon Node (passive collection, no on-device ID)
+# Rocky Linux 9 · amd64 + arm64
+#
+# Runs: SdrResourceManager (task manager), AcquisitionApp, GpsApp, and
+# sdr_recon.py — a passive AMQP consumer that watches rf.detections and, on
+# any signal crossing the SNR threshold, requests a dedicated IQ capture
+# from sdr_controller, GPS-tags it, and writes it to disk as
+# <timestamp>_<freq_mhz>MHz_<bw_khz>kHz.<format> (+ a .json metadata
+# sidecar) for later identification on a more capable machine. No
+# AnalysisApp/DemodApp/SpeechApp — this node only collects, never classifies.
+# Artemis and PostgreSQL managed by k3s.
+#
+# Build (from SdrScripts/):
+#   podman build -t openrfstack-recon:latest -f deploy/recon-node/Containerfile .
+#
+# Run:
+#   podman run -d --name sdr-recon \
+#     --privileged \
+#     --cgroupns=host \
+#     --network host \
+#     --device /dev/bus/usb \
+#     --device /dev/kmsg \
+#     --device /dev/ttyUSB0 \
+#     -e GITHUB_TOKEN=<your-token> \
+#     -v sdr-data:/var/lib/sdr:z \
+#     -v sdr-k3s:/var/lib/rancher/k3s:z \
+#     openrfstack-recon:latest
+#
+# Captures land in /var/lib/sdr/recon inside the volume — mount that to a
+# USB drive or NFS share for long unattended deployments:
+#   -v /mnt/usb:/var/lib/sdr/recon
+#
+# Pull captures to a PC for offline ID:
+#   import numpy as np
+#   iq = np.fromfile("20260619T120000Z_462.5500MHz_25kHz.cf32", dtype=np.complex64)
+#
+# GPS: pass --device /dev/ttyACM0 (or ttyUSB0) — gpsd runs inside this
+#   container against GPS_SERIAL_DEVICE (default /dev/ttyACM0).
+# SDR hardware: SoapyPlutoSDR and SoapyRTLSDR are both built in — pluto-0 and
+#   rtlsdr-0 are enabled by default in devices.xml (override with
+#   -v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z if needed).
+# Low-RAM boards (<=1GB): add -e K3S_LITE=true to disable k3s's CNI
+#   (flannel), local-path-provisioner, network-policy controller, and
+#   cloud-controller — none are used since Artemis/Postgres run
+#   hostNetwork:true with hostPath volumes.
+# Recon tuning (RECON_SNR_MIN, RECON_CAPTURE_S, RECON_GAIN, RECON_COOLDOWN,
+#   RECON_FORMAT, RECON_OUT): see configs/node.conf for defaults/comments.
+# ══════════════════════════════════════════════════════════════════════════════
+FROM rockylinux:9
+
+ENV LANG=C.UTF-8
+
+# K3S_LITE=true bakes the low-RAM k3s defaults into the image (see
+# entrypoint.sh) — still overridable at `podman run` time with -e K3S_LITE=.
+ARG K3S_LITE=false
+ENV K3S_LITE=${K3S_LITE}
+
+# ── Runtime library dependencies for SDR binaries + sdr_recon.py ─────────────
+RUN dnf install -y epel-release dnf-plugins-core && \
+    dnf config-manager --enable crb && \
+    dnf install -y --allowerasing \
+        SoapySDR \
+        qpid-proton-cpp \
+        tinyxml2 \
+        spdlog \
+        fmt \
+        fftw \
+        libpq \
+        curl \
+        procps-ng \
+        cyrus-sasl-plain \
+        gpsd-minimal \
+        python3 \
+        python3-numpy \
+        python3-qpid-proton \
+    && dnf clean all
+
+# ── libiio + SoapyPlutoSDR (not in EPEL; built from source) ──────────────────
+RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git && \
+    git clone --depth 1 --branch v0.26 \
+        https://github.com/analogdevicesinc/libiio.git /tmp/libiio && \
+    cmake -B /tmp/libiio-build -S /tmp/libiio \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DWITH_USB_BACKEND=ON \
+        -DWITH_NETWORK_BACKEND=ON \
+        -DWITH_LOCAL_BACKEND=OFF \
+        -DWITH_IIOD=OFF \
+        -DHAVE_DNS_SD=OFF \
+        -DBUILD_TESTING=OFF && \
+    cmake --build /tmp/libiio-build --parallel && \
+    cmake --install /tmp/libiio-build && \
+    git clone --depth 1 \
+        https://github.com/pothosware/SoapyPlutoSDR.git /tmp/SoapyPlutoSDR && \
+    cmake -B /tmp/SoapyPlutoSDR-build -S /tmp/SoapyPlutoSDR \
+        -DCMAKE_INSTALL_PREFIX=/usr && \
+    cmake --build /tmp/SoapyPlutoSDR-build --parallel && \
+    cmake --install /tmp/SoapyPlutoSDR-build && \
+    git clone --depth 1 \
+        https://github.com/osmocom/rtl-sdr.git /tmp/rtl-sdr && \
+    cmake -B /tmp/rtl-sdr-build -S /tmp/rtl-sdr \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DDETACH_KERNEL_DRIVER=ON \
+        -DINSTALL_UDEV_RULES=OFF \
+        -DBUILD_TESTING=OFF && \
+    cmake --build /tmp/rtl-sdr-build --parallel && \
+    cmake --install /tmp/rtl-sdr-build && \
+    git clone --depth 1 \
+        https://github.com/pothosware/SoapyRTLSDR.git /tmp/SoapyRTLSDR && \
+    cmake -B /tmp/SoapyRTLSDR-build -S /tmp/SoapyRTLSDR \
+        -DCMAKE_INSTALL_PREFIX=/usr && \
+    cmake --build /tmp/SoapyRTLSDR-build --parallel && \
+    cmake --install /tmp/SoapyRTLSDR-build && \
+    ldconfig && \
+    rm -rf /tmp/libiio /tmp/libiio-build /tmp/SoapyPlutoSDR /tmp/SoapyPlutoSDR-build \
+           /tmp/rtl-sdr /tmp/rtl-sdr-build /tmp/SoapyRTLSDR /tmp/SoapyRTLSDR-build && \
+    dnf remove -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git && \
+    dnf clean all
+
+# ── GitHub CLI (for release asset downloads) ─────────────────────────────────
+RUN dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo && \
+    dnf install -y gh && \
+    dnf clean all
+
+# ── k3s (binary only — no systemd needed at runtime) ─────────────────────────
+RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
+    K3S_BIN=$([ "$ARCH" = "amd64" ] && echo "k3s" || echo "k3s-${ARCH}") && \
+    TAG=$(curl -sfL https://api.github.com/repos/k3s-io/k3s/releases/latest \
+          | grep -m1 '"tag_name"' | cut -d'"' -f4) && \
+    ENCODED_TAG=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$TAG") && \
+    curl -sfL "https://github.com/k3s-io/k3s/releases/download/${ENCODED_TAG}/${K3S_BIN}" \
+         -o /usr/local/bin/k3s && \
+    chmod +x /usr/local/bin/k3s && \
+    mkdir -p /var/lib/rancher/k3s /etc/rancher/k3s
+
+# ── sdr_recon.py (vendored from AcquisitionApp at build time — baked in
+#    rather than fetched at startup since it's a small, stable script and
+#    this avoids one more live network dependency at every container start) ──
+RUN git clone --depth 1 --branch main/1.0 \
+        https://github.com/OpenRFStack/AcquisitionApp.git /tmp/AcquisitionApp && \
+    cp /tmp/AcquisitionApp/src/sdr_recon.py /usr/local/bin/sdr_recon.py && \
+    chmod +x /usr/local/bin/sdr_recon.py && \
+    rm -rf /tmp/AcquisitionApp
+
+# ── Bundle manifests and default configs ─────────────────────────────────────
+COPY deploy/recon-node/k8s/     /opt/sdr-node/k8s/
+COPY deploy/recon-node/configs/ /opt/sdr-node/configs/
+COPY deploy/recon-node/entrypoint.sh /opt/sdr-node/entrypoint.sh
+RUN chmod +x /opt/sdr-node/entrypoint.sh
+
+VOLUME ["/var/lib/sdr", "/var/lib/rancher/k3s"]
+
+ENTRYPOINT ["/opt/sdr-node/entrypoint.sh"]
