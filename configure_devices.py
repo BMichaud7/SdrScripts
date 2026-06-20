@@ -28,7 +28,7 @@ PRESETS = {
         "freq_min_mhz": 70.0, "freq_max_mhz": 6000.0,
         "bandwidth_max_mhz": 20.0, "sample_rate_max_msps": 61.44,
         "rx_gain_min_db": -3, "rx_gain_max_db": 71,
-        "rx_agc": True, "rx_gain_db": 30,
+        "rx_agc": False, "rx_gain_db": 30,
     },
     "rtlsdr": {
         "label": "RTL-SDR",
@@ -39,7 +39,7 @@ PRESETS = {
         "freq_min_mhz": 0.5, "freq_max_mhz": 1700.0,
         "bandwidth_max_mhz": 3.2, "sample_rate_max_msps": 3.2,
         "rx_gain_min_db": 0, "rx_gain_max_db": 49,
-        "rx_agc": True, "rx_gain_db": 30,
+        "rx_agc": False, "rx_gain_db": 30,
     },
     "custom": {
         "label": "", "driver": "", "uri": "", "uri_hint": "",
@@ -47,7 +47,7 @@ PRESETS = {
         "freq_min_mhz": 0.0, "freq_max_mhz": 0.0,
         "bandwidth_max_mhz": 0.0, "sample_rate_max_msps": 0.0,
         "rx_gain_min_db": 0, "rx_gain_max_db": 0,
-        "rx_agc": True, "rx_gain_db": 30,
+        "rx_agc": False, "rx_gain_db": 30,
     },
 }
 

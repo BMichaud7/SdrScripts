@@ -77,8 +77,8 @@ escape hatch, not the default path.
 Each `<device>` in `devices.xml` has `<rx_agc>` and `<rx_gain_db>`:
 
 - `<rx_agc>true</rx_agc>` — hardware AGC (`SoapySDR::Device::setGainMode`)
-  picks gain per-channel automatically. Default for all shipped configs,
-  since signal strength varies (different antennas, distances, environments).
+  picks gain per-channel automatically. Likely worth enabling for
+  mobile/recon, where signal strength varies a lot, but not yet field-tested.
 - `<rx_agc>false</rx_agc>` — fixed manual gain at `<rx_gain_db>`, for
   repeatable/deterministic captures with known signal levels. `<rx_gain_db>`
   is ignored while `rx_agc` is `true` but stays in the file so you can flip
