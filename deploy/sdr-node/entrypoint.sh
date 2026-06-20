@@ -165,6 +165,28 @@ if [[ "${K3S_LITE:-false}" == "true" ]]; then
 }
 CNIEOF
 fi
+
+# ── Detect a k3s-mode switch on a reused data volume ──────────────────────────
+# Switching K3S_LITE (lite<->full) on a volume that still has k3s server
+# state from the OTHER mode (different CNI/flannel/snapshotter setup)
+# crashes crun with "setns mnt: Bad file descriptor" on startup. Previously
+# this needed a manual `podman volume rm sdr-k3s` to recover. Detect the
+# switch via a marker file and wipe just the k3s data dir automatically --
+# same cost as the manual workaround (fresh server + image re-pull), but
+# without needing an operator to notice and intervene.
+K3S_DATA_DIR=/var/lib/rancher/k3s
+K3S_MODE_MARKER="$K3S_DATA_DIR/.sdr_k3s_lite_mode"
+CURRENT_K3S_MODE="${K3S_LITE:-false}"
+if [[ -d "$K3S_DATA_DIR" ]] && [[ -n "$(ls -A "$K3S_DATA_DIR" 2>/dev/null)" ]]; then
+    PREV_K3S_MODE=$(cat "$K3S_MODE_MARKER" 2>/dev/null || echo "")
+    if [[ "$PREV_K3S_MODE" != "$CURRENT_K3S_MODE" ]]; then
+        warn "k3s mode changed ('${PREV_K3S_MODE:-unknown}' -> '$CURRENT_K3S_MODE') on a reused data dir — wiping $K3S_DATA_DIR to avoid a crun setns crash"
+        rm -rf "$K3S_DATA_DIR"
+    fi
+fi
+mkdir -p "$K3S_DATA_DIR"
+echo "$CURRENT_K3S_MODE" > "$K3S_MODE_MARKER"
+
 log "Starting k3s server …"
 # shellcheck disable=SC2086
 k3s server \
