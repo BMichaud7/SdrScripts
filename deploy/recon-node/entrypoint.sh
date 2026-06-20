@@ -168,7 +168,11 @@ if [[ -d "$K3S_DATA_DIR" ]] && [[ -n "$(ls -A "$K3S_DATA_DIR" 2>/dev/null)" ]]; 
     PREV_K3S_MODE=$(cat "$K3S_MODE_MARKER" 2>/dev/null || echo "")
     if [[ "$PREV_K3S_MODE" != "$CURRENT_K3S_MODE" ]]; then
         warn "k3s mode changed ('${PREV_K3S_MODE:-unknown}' -> '$CURRENT_K3S_MODE') on a reused data dir — wiping $K3S_DATA_DIR to avoid a crun setns crash"
-        rm -rf "$K3S_DATA_DIR"
+        # $K3S_DATA_DIR is itself a bind-mounted volume root when run under
+        # podman/k8s with a named volume -- `rm -rf` on the mount point
+        # fails with "Device or resource busy" (confirmed on real hardware
+        # during round-2 verification). Clear its contents instead.
+        find "$K3S_DATA_DIR" -mindepth 1 -delete
     fi
 fi
 mkdir -p "$K3S_DATA_DIR"
