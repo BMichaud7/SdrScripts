@@ -33,12 +33,13 @@
   </policy>
 
   <devices>
-    <!-- ADALM-PLUTO: 70 MHz – 6 GHz, up to 61.44 MSPS, network-attached via libiio.
-         uri is a libiio context string: "ip:<host>" for network, "usb:X.Y.Z" for
-         local USB, or empty to let SoapyPlutoSDR auto-discover over USB. -->
+    <!-- ADALM-PLUTO: 70 MHz – 6 GHz, up to 61.44 MSPS. Leave uri empty to let
+         SoapySDR::Device::enumerate() discover it (USB scan, zeroconf, or the
+         PLUTO_IP env var for a network-attached unit); see RadioDevice::open().
+         Set uri explicitly here only to force a specific address. -->
     <device id="pluto-0">
       <driver>plutosdr</driver>
-      <uri>ip:192.168.1.253</uri>
+      <uri></uri>
       <label>PlutoSDR</label>
       <streaming_source_ip>127.0.0.1</streaming_source_ip>
       <capabilities>

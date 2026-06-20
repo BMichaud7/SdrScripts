@@ -46,6 +46,28 @@ just a flag:
   writes it to disk for later offline identification on a more capable
   machine. Never classifies on-device.
 
+## Running RTL-SDR and PlutoSDR together
+
+All three node types' `devices.xml` ship with both `rtlsdr-0` and `pluto-0`
+enabled, and `AcquisitionApp`'s band-splitting (see `main.cpp`) spreads the
+configured sweep range across however many devices `sdr_controller` reports
+online, so both run simultaneously with no extra config.
+
+`pluto-0`'s `<uri>` is intentionally left empty — `RadioDevice::open()`
+calls `SoapySDR::Device::enumerate()` when no uri is configured, which lets
+SoapyPlutoSDR's own discovery run (USB scan, then zeroconf, then a
+`PLUTO_IP` env var fallback) instead of us hand-maintaining an address in
+devices.xml. This container image has no avahi/zeroconf, so for a
+network-attached Pluto, pass its IP as an env var at `podman run` time:
+
+```
+-e PLUTO_IP=192.168.1.253
+```
+
+(libiio convention: `ip:<host>` would also work as an explicit `<uri>` in
+devices.xml, but `PLUTO_IP` is preferred — it's the driver's own discovery
+hook rather than a value we'd need to keep in sync across 3 config files.)
+
 ## Known k3s-in-container gotchas (already worked around)
 
 Running k3s rootful-in-a-container on a Pi hits two kubelet startup bugs,
