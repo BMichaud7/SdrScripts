@@ -152,6 +152,13 @@ RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
 # ── sdr_recon.py (vendored from AcquisitionApp at build time — baked in
 #    rather than fetched at startup since it's a small, stable script and
 #    this avoids one more live network dependency at every container start) ──
+# `git clone` is the same command text on every build, so without this,
+# buildx's GHA layer cache reuses the OLD clone forever once cached --
+# confirmed on real hardware: a fix pushed to AcquisitionApp's main/1.0
+# silently never made it into the image across several rebuilds. ADD of a
+# URL is always re-fetched and its content hashed for cache-key purposes,
+# so this line invalidates the clone layer whenever the branch HEAD moves.
+ADD https://api.github.com/repos/OpenRFStack/AcquisitionApp/commits/main/1.0 /tmp/acquisitionapp-head.json
 RUN git clone --depth 1 --branch main/1.0 \
         https://github.com/OpenRFStack/AcquisitionApp.git /tmp/AcquisitionApp && \
     cp /tmp/AcquisitionApp/src/sdr_recon.py /usr/local/bin/sdr_recon.py && \
