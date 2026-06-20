@@ -28,6 +28,7 @@ PRESETS = {
         "freq_min_mhz": 70.0, "freq_max_mhz": 6000.0,
         "bandwidth_max_mhz": 20.0, "sample_rate_max_msps": 61.44,
         "rx_gain_min_db": -3, "rx_gain_max_db": 71,
+        "rx_agc": True, "rx_gain_db": 30,
     },
     "rtlsdr": {
         "label": "RTL-SDR",
@@ -38,6 +39,7 @@ PRESETS = {
         "freq_min_mhz": 0.5, "freq_max_mhz": 1700.0,
         "bandwidth_max_mhz": 3.2, "sample_rate_max_msps": 3.2,
         "rx_gain_min_db": 0, "rx_gain_max_db": 49,
+        "rx_agc": True, "rx_gain_db": 30,
     },
     "custom": {
         "label": "", "driver": "", "uri": "", "uri_hint": "",
@@ -45,6 +47,7 @@ PRESETS = {
         "freq_min_mhz": 0.0, "freq_max_mhz": 0.0,
         "bandwidth_max_mhz": 0.0, "sample_rate_max_msps": 0.0,
         "rx_gain_min_db": 0, "rx_gain_max_db": 0,
+        "rx_agc": True, "rx_gain_db": 30,
     },
 }
 
@@ -94,6 +97,12 @@ DEVICE_TEMPLATE = """    <device id="{id}">
       <uri>{uri}</uri>
       <label>{label}</label>
       <streaming_source_ip>127.0.0.1</streaming_source_ip>
+      <!-- rx_agc: true = hardware AGC picks gain per-channel (good for
+           varying/unknown signal strength). false = fixed manual gain at
+           rx_gain_db below. rx_gain_db is ignored when rx_agc=true but
+           stays here so you can flip back without re-adding it. -->
+      <rx_agc>{rx_agc}</rx_agc>
+      <rx_gain_db>{rx_gain_db}</rx_gain_db>
       <capabilities>
         <rx_channels>{rx_channels}</rx_channels>
         <tx_channels>{tx_channels}</tx_channels>
@@ -120,6 +129,14 @@ def ask_float(prompt, default):
             return float(raw)
         except ValueError:
             print("  Please enter a number.")
+
+
+def ask_bool(prompt, default):
+    suffix = "Y/n" if default else "y/N"
+    raw = input(f"{prompt} [{suffix}]: ").strip().lower()
+    if not raw:
+        return default
+    return raw in ("y", "yes", "true", "1")
 
 
 def ask_int(prompt, default):
@@ -175,6 +192,13 @@ def configure_device(existing_ids):
     rx_gain_min_db = ask_int("  RX gain min (dB)", preset["rx_gain_min_db"])
     rx_gain_max_db = ask_int("  RX gain max (dB)", preset["rx_gain_max_db"])
 
+    print("Gain control:")
+    rx_agc = ask_bool("  Use hardware AGC (auto gain)?", preset["rx_agc"])
+    if rx_agc:
+        rx_gain_db = preset["rx_gain_db"]  # unused while AGC is on, kept so flipping back needs no re-entry
+    else:
+        rx_gain_db = ask_int("  Manual RX gain (dB)", preset["rx_gain_db"])
+
     return DEVICE_TEMPLATE.format(
         id=dev_id, driver=driver, uri=uri, label=label,
         rx_channels=rx_channels, tx_channels=tx_channels,
@@ -182,6 +206,7 @@ def configure_device(existing_ids):
         bandwidth_max_hz=int(bandwidth_max_mhz * 1e6),
         sample_rate_max_sps=int(sample_rate_max_msps * 1e6),
         rx_gain_min_db=rx_gain_min_db, rx_gain_max_db=rx_gain_max_db,
+        rx_agc="true" if rx_agc else "false", rx_gain_db=rx_gain_db,
     ), dev_id
 
 

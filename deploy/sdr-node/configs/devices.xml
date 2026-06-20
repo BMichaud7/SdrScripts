@@ -42,6 +42,14 @@
       <uri></uri>
       <label>PlutoSDR</label>
       <streaming_source_ip>127.0.0.1</streaming_source_ip>
+      <!-- rx_agc: true = hardware AGC picks gain per-channel (good for
+           varying/unknown signal strength). false = fixed manual gain at
+           rx_gain_db below (repeatable, deterministic — good for a fixed
+           site with known signal levels). rx_gain_db is ignored when
+           rx_agc=true but stays here so you can flip back without
+           re-adding it. -->
+      <rx_agc>true</rx_agc>
+      <rx_gain_db>30</rx_gain_db>
       <capabilities>
         <rx_channels>2</rx_channels>
         <tx_channels>2</tx_channels>
@@ -60,6 +68,9 @@
       <uri>driver=rtlsdr</uri>
       <label>RTL-SDR</label>
       <streaming_source_ip>127.0.0.1</streaming_source_ip>
+      <!-- See pluto-0 above for rx_agc/rx_gain_db semantics. -->
+      <rx_agc>true</rx_agc>
+      <rx_gain_db>30</rx_gain_db>
       <capabilities>
         <rx_channels>1</rx_channels>
         <tx_channels>0</tx_channels>
