@@ -127,8 +127,15 @@ if [[ "${K3S_LITE:-false}" == "true" ]]; then
     # Artemis/Postgres pods both run hostNetwork:true and mount hostPath
     # volumes (no PVC/StorageClass), so the CNI and local-path-provisioner
     # are dead weight here. Cuts k3s's idle RSS substantially on <=1GB boards.
-    K3S_LITE_ARGS="--flannel-backend=none --disable=local-storage --disable-network-policy --disable-cloud-controller"
-    log "K3S_LITE=true — flannel/local-storage/network-policy/cloud-controller disabled"
+    # coredns is disabled too: it's the only stock k3s pod that ISN'T
+    # hostNetwork:true, so it's also the only one that actually needs a real
+    # CNI plugin (not just a conf file) to get a sandbox -- and nothing here
+    # does cluster-DNS lookups (every SDR service talks to localhost). Without
+    # this it crash-loops forever on "failed to find plugin loopback in path
+    # [/opt/cni/bin]" since flannel (which normally installs that binary) is
+    # disabled above.
+    K3S_LITE_ARGS="--flannel-backend=none --disable=local-storage --disable-network-policy --disable-cloud-controller --disable=coredns"
+    log "K3S_LITE=true — flannel/local-storage/network-policy/cloud-controller/coredns disabled"
     # All SDR pods run hostNetwork:true (no real CNI plumbing needed), but
     # kubelet still gates node Ready on a CNI conf being present — without
     # flannel to write one, it sits in NetworkPluginNotReady forever.
