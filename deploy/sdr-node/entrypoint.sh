@@ -193,6 +193,16 @@ k3s kubectl rollout status deployment/postgres -n sdr-system --timeout=600s \
     || warn "PostgreSQL not ready yet — continuing"
 ok "Infrastructure ready"
 
+# k3s's own internal bootstrap (creating its embedded CRDs, e.g.
+# etcdsnapshotfiles.k3s.cattle.io) is still finishing in the background even
+# after `kubectl get nodes` succeeds and Artemis/Postgres roll out — on a weak
+# ARM board, immediately launching 5 CPU-heavy SDR binaries (controller,
+# acquisition, analysis, demod, speech) starves that background work just
+# enough to lose a race against k3s's own embedded apiserver proxy port,
+# which is fatal to the k3s process (and thus the whole container). A short
+# settle delay here lets k3s finish bootstrapping under low load first.
+sleep 10
+
 # Clean up legacy SDR k8s deployments if present from a previous image version
 for svc in sdr-controller sdr-acquisition sdr-analysis sdr-demod sdr-speech; do
     k3s kubectl delete deployment "$svc" -n sdr-system --ignore-not-found 2>/dev/null || true
@@ -211,9 +221,11 @@ start_service() {
     fi
     log "Starting $name …"
     (
+        set +e
         while true; do
             "/usr/bin/$bin" "${args[@]}" >> "$LOG_DIR/${name}.log" 2>&1
-            warn "$name exited (code $?) — restarting in 3s"
+            rc=$?
+            warn "$name exited (code $rc) — restarting in 3s"
             sleep 3
         done
     ) &
