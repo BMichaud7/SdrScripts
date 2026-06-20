@@ -47,7 +47,8 @@ ARG K3S_LITE=false
 ENV K3S_LITE=${K3S_LITE}
 
 # ── Runtime library dependencies for SDR binaries ────────────────────────────
-RUN dnf install -y epel-release && \
+RUN dnf install -y epel-release dnf-plugins-core && \
+    dnf config-manager --enable crb && \
     dnf install -y --allowerasing \
         SoapySDR \
         qpid-proton-cpp \
@@ -59,10 +60,18 @@ RUN dnf install -y epel-release && \
         curl \
         procps-ng \
         cyrus-sasl-plain \
+        avahi \
+        avahi-libs \
+        dbus \
+        dbus-daemon \
     && dnf clean all
 
 # ── libiio + SoapyPlutoSDR (not in EPEL; built from source) ──────────────────
-RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git && \
+# HAVE_DNS_SD=ON enables libiio's zeroconf ("ip") scan backend so a
+# network-attached PlutoSDR can be found via mDNS with no IP hand-maintained
+# anywhere (see deploy/README.md) -- needs avahi-devel/dbus-devel at build
+# time and avahi-daemon/dbus-daemon running at runtime (entrypoint.sh).
+RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel avahi-devel dbus-devel cmake gcc-c++ git && \
     git clone --depth 1 --branch v0.26 \
         https://github.com/analogdevicesinc/libiio.git /tmp/libiio && \
     cmake -B /tmp/libiio-build -S /tmp/libiio \
@@ -71,7 +80,7 @@ RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git 
         -DWITH_NETWORK_BACKEND=ON \
         -DWITH_LOCAL_BACKEND=OFF \
         -DWITH_IIOD=OFF \
-        -DHAVE_DNS_SD=OFF \
+        -DHAVE_DNS_SD=ON \
         -DBUILD_TESTING=OFF && \
     cmake --build /tmp/libiio-build --parallel && \
     cmake --install /tmp/libiio-build && \
@@ -83,7 +92,7 @@ RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git 
     cmake --install /tmp/SoapyPlutoSDR-build && \
     ldconfig && \
     rm -rf /tmp/libiio /tmp/libiio-build /tmp/SoapyPlutoSDR /tmp/SoapyPlutoSDR-build && \
-    dnf remove -y libusb1-devel libxml2-devel SoapySDR-devel cmake gcc-c++ git && \
+    dnf remove -y libusb1-devel libxml2-devel SoapySDR-devel avahi-devel dbus-devel cmake gcc-c++ git && \
     dnf clean all
 
 # ── GitHub CLI (for release asset downloads) ─────────────────────────────────

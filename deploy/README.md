@@ -55,18 +55,22 @@ online, so both run simultaneously with no extra config.
 
 `pluto-0`'s `<uri>` is intentionally left empty — `RadioDevice::open()`
 calls `SoapySDR::Device::enumerate()` when no uri is configured, which lets
-SoapyPlutoSDR's own discovery run (USB scan, then zeroconf, then a
-`PLUTO_IP` env var fallback) instead of us hand-maintaining an address in
-devices.xml. This container image has no avahi/zeroconf, so for a
-network-attached Pluto, pass its IP as an env var at `podman run` time:
+SoapyPlutoSDR's own discovery run: USB scan first, then zeroconf (mDNS).
+No IP is hand-maintained anywhere. This requires two things the image now
+provides:
 
-```
--e PLUTO_IP=192.168.1.253
-```
+- libiio built with `-DHAVE_DNS_SD=ON` (its zeroconf scan backend is
+  otherwise compiled out entirely — confirmed via `Unable to scan ip: -19`
+  before this was enabled).
+- `dbus-daemon --system` and `avahi-daemon` running (entrypoint.sh starts
+  both before k3s). The ADALM-PLUTO's own firmware already advertises
+  itself via mDNS out of the box, so a network-attached Pluto on the same
+  L2 segment is found with zero configuration on either side.
 
-(libiio convention: `ip:<host>` would also work as an explicit `<uri>` in
-devices.xml, but `PLUTO_IP` is preferred — it's the driver's own discovery
-hook rather than a value we'd need to keep in sync across 3 config files.)
+If mDNS is ever unavailable on your network (some routers block multicast
+across VLANs), SoapyPlutoSDR still falls back to a `PLUTO_IP` env var —
+e.g. `-e PLUTO_IP=192.168.1.253` — as a manual override, but that's an
+escape hatch, not the default path.
 
 ## Known k3s-in-container gotchas (already worked around)
 

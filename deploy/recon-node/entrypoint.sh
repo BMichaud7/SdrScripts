@@ -115,6 +115,15 @@ elif [[ "$ENABLE_SDR_GPS" == "true" ]]; then
     warn "GPS enabled but ${GPS_SERIAL_DEVICE} not found — sdr-gps will retry gpsd connection"
 fi
 
+# ── D-Bus + Avahi (zeroconf so SoapyPlutoSDR can find a network-attached
+#    PlutoSDR via mDNS with no IP hand-maintained anywhere — see
+#    RadioDevice::open() in SdrResourceManager and deploy/README.md) ─────────
+mkdir -p /var/run/dbus
+[[ ! -S /var/run/dbus/system_bus_socket ]] && dbus-daemon --system --fork
+avahi-daemon --no-chroot --no-drop-root -D >> "$LOG_DIR/avahi.log" 2>&1 \
+    && ok "avahi-daemon started (zeroconf PlutoSDR discovery)" \
+    || warn "avahi-daemon failed to start — PlutoSDR discovery falls back to USB/PLUTO_IP"
+
 # ── Start k3s ─────────────────────────────────────────────────────────────────
 K3S_HTTPS_PORT=${K3S_HTTPS_PORT:-6445}
 K3S_LITE_ARGS=""
