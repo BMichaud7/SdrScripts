@@ -72,6 +72,23 @@ across VLANs), SoapyPlutoSDR still falls back to a `PLUTO_IP` env var —
 e.g. `-e PLUTO_IP=192.168.1.253` — as a manual override, but that's an
 escape hatch, not the default path.
 
+## Generating devices.xml interactively
+
+`../configure_devices.py` (repo root) walks through adding one or more SDR
+devices — PlutoSDR and RTL-SDR presets you can accept or override, or a
+custom SoapySDR driver — plus a sweep frequency range, then writes
+`devices.xml` into one of the three `deploy/<node-type>/configs/`
+directories (or a custom path, for mounting at runtime with
+`-v /path/to/devices.xml:/etc/sdr/devices.xml:ro,z`). It can optionally patch
+the matching `scanner.xml`'s `<start_hz>`/`<stop_hz>` to the same range.
+Existing files are backed up to `.bak` before being overwritten.
+
+```
+./configure_devices.py
+```
+
+No external dependencies — plain `python3`.
+
 ## Known k3s-in-container gotchas (already worked around)
 
 Running k3s rootful-in-a-container on a Pi hits two kubelet startup bugs,
