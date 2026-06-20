@@ -90,8 +90,24 @@ RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel avahi-devel dbus-d
         -DCMAKE_INSTALL_PREFIX=/usr && \
     cmake --build /tmp/SoapyPlutoSDR-build --parallel && \
     cmake --install /tmp/SoapyPlutoSDR-build && \
+    git clone --depth 1 \
+        https://github.com/osmocom/rtl-sdr.git /tmp/rtl-sdr && \
+    cmake -B /tmp/rtl-sdr-build -S /tmp/rtl-sdr \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DDETACH_KERNEL_DRIVER=ON \
+        -DINSTALL_UDEV_RULES=OFF \
+        -DBUILD_TESTING=OFF && \
+    cmake --build /tmp/rtl-sdr-build --parallel && \
+    cmake --install /tmp/rtl-sdr-build && \
+    git clone --depth 1 \
+        https://github.com/pothosware/SoapyRTLSDR.git /tmp/SoapyRTLSDR && \
+    cmake -B /tmp/SoapyRTLSDR-build -S /tmp/SoapyRTLSDR \
+        -DCMAKE_INSTALL_PREFIX=/usr && \
+    cmake --build /tmp/SoapyRTLSDR-build --parallel && \
+    cmake --install /tmp/SoapyRTLSDR-build && \
     ldconfig && \
-    rm -rf /tmp/libiio /tmp/libiio-build /tmp/SoapyPlutoSDR /tmp/SoapyPlutoSDR-build && \
+    rm -rf /tmp/libiio /tmp/libiio-build /tmp/SoapyPlutoSDR /tmp/SoapyPlutoSDR-build \
+           /tmp/rtl-sdr /tmp/rtl-sdr-build /tmp/SoapyRTLSDR /tmp/SoapyRTLSDR-build && \
     dnf remove -y libusb1-devel libxml2-devel SoapySDR-devel avahi-devel dbus-devel cmake gcc-c++ git && \
     dnf clean all
 
