@@ -41,6 +41,55 @@ PRESETS = {
         "rx_gain_min_db": 0, "rx_gain_max_db": 49,
         "rx_agc": False, "rx_gain_db": 30,
     },
+    "hackrf": {
+        "label": "HackRF",
+        "driver": "hackrf",
+        "uri": "driver=hackrf",
+        "uri_hint": "SoapyHackRF ignores this beyond the driver= key",
+        "rx_channels": 1, "tx_channels": 1,
+        "freq_min_mhz": 1.0, "freq_max_mhz": 6000.0,
+        "bandwidth_max_mhz": 20.0, "sample_rate_max_msps": 20.0,
+        # Aggregate of HackRF's 3 gain stages (LNA 0-40, VGA 0-62, amp 0/14)
+        # as SoapyHackRF exposes a single combined RX gain.
+        "rx_gain_min_db": 0, "rx_gain_max_db": 116,
+        "rx_agc": False, "rx_gain_db": 30,
+    },
+    "limesdr": {
+        "label": "LimeSDR",
+        "driver": "lime",
+        "uri": "driver=lime",
+        "uri_hint": "SoapyLMS7 ignores this beyond the driver= key",
+        "rx_channels": 2, "tx_channels": 2,
+        "freq_min_mhz": 0.1, "freq_max_mhz": 3800.0,
+        "bandwidth_max_mhz": 130.0, "sample_rate_max_msps": 61.44,
+        "rx_gain_min_db": 0, "rx_gain_max_db": 73,
+        "rx_agc": False, "rx_gain_db": 30,
+    },
+    "usrp": {
+        "label": "USRP B210",
+        "driver": "uhd",
+        "uri": "driver=uhd",
+        "uri_hint": "add e.g. ,serial=XXXXXXX here to pin a specific unit if you have more than one",
+        "rx_channels": 2, "tx_channels": 2,
+        "freq_min_mhz": 70.0, "freq_max_mhz": 6000.0,
+        # B200/B210 use the same AD9361 as PlutoSDR, hence matching bandwidth/SR.
+        "bandwidth_max_mhz": 56.0, "sample_rate_max_msps": 61.44,
+        "rx_gain_min_db": 0, "rx_gain_max_db": 76,
+        "rx_agc": False, "rx_gain_db": 30,
+    },
+    "sdrplay": {
+        "label": "SDRplay",
+        "driver": "sdrplay",
+        "uri": "driver=sdrplay",
+        "uri_hint": "SoapySDRPlay3 ignores this beyond the driver= key",
+        "rx_channels": 1, "tx_channels": 0,
+        "freq_min_mhz": 0.001, "freq_max_mhz": 2000.0,
+        "bandwidth_max_mhz": 8.0, "sample_rate_max_msps": 10.66,
+        # SDRplay controls gain via reduction steps, not a clean dB range;
+        # this is an approximate aggregate — adjust after checking your unit.
+        "rx_gain_min_db": 0, "rx_gain_max_db": 40,
+        "rx_agc": False, "rx_gain_db": 30,
+    },
     "custom": {
         "label": "", "driver": "", "uri": "", "uri_hint": "",
         "rx_channels": 1, "tx_channels": 0,
@@ -165,9 +214,17 @@ def ask_choice(prompt, choices, default_idx=0):
 def configure_device(existing_ids):
     idx = ask_choice(
         "\nDevice type:",
-        ["PlutoSDR (network or USB)", "RTL-SDR (USB)", "Custom / other SoapySDR driver"],
+        [
+            "PlutoSDR (network or USB)",
+            "RTL-SDR (USB)",
+            "HackRF (USB)",
+            "LimeSDR (USB)",
+            "USRP B-series, via UHD (USB)",
+            "SDRplay RSP series (USB)",
+            "Custom / other SoapySDR driver",
+        ],
     )
-    preset_key = ["pluto", "rtlsdr", "custom"][idx]
+    preset_key = ["pluto", "rtlsdr", "hackrf", "limesdr", "usrp", "sdrplay", "custom"][idx]
     preset = PRESETS[preset_key]
 
     default_id = preset_key if preset_key != "custom" else "sdr"
