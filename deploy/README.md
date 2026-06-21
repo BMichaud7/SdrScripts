@@ -100,6 +100,49 @@ across VLANs), SoapyPlutoSDR still falls back to a `PLUTO_IP` env var —
 e.g. `-e PLUTO_IP=192.168.1.253` — as a manual override, but that's an
 escape hatch, not the default path.
 
+### RTL-SDR host prerequisites (two gotchas, both host-side, not fixable from inside the container)
+
+Because the container needs `--privileged` to reach the dongle's raw USB
+device node at all, both of these are host-kernel issues no container
+config can work around:
+
+1. **The in-kernel DVB-T driver stack claims the dongle by default.**
+   `dvb_usb_rtl28xxu`/`rtl2832_sdr`/`rtl2832` bind to the same RTL2832U
+   chip librtlsdr/SoapyRTLSDR needs, and the two fight over the same
+   I2C-attached R820T tuner. Symptom: `[R82XX] PLL not locked!` plus
+   `rtl_sdr`/`rtl_power`/`SoapySDRUtil --probe` hanging indefinitely on
+   the first read (zero bytes, doesn't even time out — needs `kill -9`).
+   Fix once per host, no reboot needed:
+   ```sh
+   sudo rmmod rtl2832_sdr rtl2832 dvb_usb_rtl28xxu dvb_usb_v2
+   sudo tee /etc/modprobe.d/blacklist-rtlsdr-dvb.conf <<'EOF'
+   blacklist dvb_usb_rtl28xxu
+   blacklist rtl2832_sdr
+   blacklist rtl2832
+   EOF
+   ```
+2. **A killed/crashed process can leave the dongle's USB session wedged**
+   even after the DVB blacklist above — a `SIGKILL`'d `rtl_sdr`/container
+   doesn't get a chance to release its USB claim cleanly, and the next
+   attempt to open the device hangs the same way (`PLL not locked` +
+   indefinite read hang) even though no process holds it anymore. A
+   logical USB reset clears it without needing to physically unplug
+   the dongle:
+   ```sh
+   dev=$(grep -l 0bda /sys/bus/usb/devices/*/idVendor | xargs dirname)
+   echo 0 | sudo tee $dev/authorized
+   echo 1 | sudo tee $dev/authorized
+   ```
+   If this is happening repeatedly in production (e.g. a container
+   restart loop after a crash mid-capture), the entrypoint's RTL-SDR
+   device-open retry should perform this reset before re-trying — not
+   yet wired in, since it hasn't been needed outside of this kind of
+   repeated manual kill-during-test scenario.
+
+`[R82XX] PLL not locked!` on its own, with a capture that completes and
+returns real samples, is harmless noise from this tuner/librtlsdr
+combination — only treat it as a real fault if the read also hangs.
+
 ## RX gain: AGC vs. manual
 
 Each `<device>` in `devices.xml` has `<rx_agc>` and `<rx_gain_db>`:
