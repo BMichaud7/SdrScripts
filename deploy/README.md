@@ -112,13 +112,20 @@ config can work around:
    I2C-attached R820T tuner. Symptom: `[R82XX] PLL not locked!` plus
    `rtl_sdr`/`rtl_power`/`SoapySDRUtil --probe` hanging indefinitely on
    the first read (zero bytes, doesn't even time out — needs `kill -9`).
-   Fix once per host, no reboot needed:
+   Fix once per host, no reboot needed. Use `install ... /bin/false`, not
+   plain `blacklist` — every `rtl_sdr`/SoapyRTLSDR open+close cycle does a
+   libusb detach/reattach of "whatever kernel driver was there", which
+   re-triggers a udev coldplug that calls modprobe by literal module name;
+   plain `blacklist` only stops alias-based autoload and does **not**
+   block that path, so the DVB driver silently comes back after the very
+   first capture (confirmed: `blacklist` let it reload, `install .../bin/false`
+   didn't, across repeated open/close cycles):
    ```sh
-   sudo rmmod rtl2832_sdr rtl2832 dvb_usb_rtl28xxu dvb_usb_v2
+   sudo rmmod rtl2832_sdr rtl2832 i2c_mux regmap_i2c dvb_usb_rtl28xxu dvb_usb_v2
    sudo tee /etc/modprobe.d/blacklist-rtlsdr-dvb.conf <<'EOF'
-   blacklist dvb_usb_rtl28xxu
-   blacklist rtl2832_sdr
-   blacklist rtl2832
+   install dvb_usb_rtl28xxu /bin/false
+   install rtl2832_sdr /bin/false
+   install rtl2832 /bin/false
    EOF
    ```
 2. **A killed/crashed process can leave the dongle's USB session wedged**
