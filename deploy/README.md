@@ -14,6 +14,29 @@ Three node types, each published as a full and a `-lite` GHCR package —
 
 All six pull from `ghcr.io/openrfstack/<package>:latest` and are public.
 
+## Quick start
+
+```sh
+sudo podman run -d --name sdr-node \
+    --net host --cgroupns host --privileged \
+    -e GITHUB_TOKEN=<token-with-repo-read> \
+    -v sdr-data:/var/lib/sdr \
+    -v sdr-k3s:/var/lib/rancher/k3s \
+    ghcr.io/openrfstack/openrfstack-node:latest
+```
+
+`--net host` is **not optional** if you're using a network-attached
+PlutoSDR (see "Running RTL-SDR and PlutoSDR together" below) — without it,
+the container's network namespace is isolated on podman's own bridge
+subnet and mDNS multicast can never reach the real LAN, so
+`SoapyPlutoSDR`'s zeroconf discovery silently finds nothing. This looks
+exactly like the Pluto being disconnected/powered off (`[pluto-0] open()
+exception: no device context found`) even when it's reachable fine by IP
+— confirmed by testing the same image with and without `--net host`
+against the same hardware. If you only use USB-attached devices (RTL-SDR,
+USB-mode Pluto, WiNRADiO, etc.) `--net host` isn't load-bearing, but
+there's no real downside to always including it, so just always include it.
+
 ## The lite/default split
 
 `-lite` and default are the same RPMs/binaries, built from the same
@@ -66,6 +89,11 @@ provides:
   both before k3s). The ADALM-PLUTO's own firmware already advertises
   itself via mDNS out of the box, so a network-attached Pluto on the same
   L2 segment is found with zero configuration on either side.
+- **`podman run --net host`** on the outer container (see Quick start
+  above). Without it, none of the above matters — the container's own
+  network namespace never sees the LAN's multicast traffic at all, so
+  discovery finds nothing and `pluto-0` fails to open, indistinguishable
+  in the logs from the Pluto actually being disconnected.
 
 If mDNS is ever unavailable on your network (some routers block multicast
 across VLANs), SoapyPlutoSDR still falls back to a `PLUTO_IP` env var —
