@@ -151,8 +151,18 @@ if [[ "${K3S_LITE:-false}" == "true" ]]; then
     # this it crash-loops forever on "failed to find plugin loopback in path
     # [/opt/cni/bin]" since flannel (which normally installs that binary) is
     # disabled above.
-    K3S_LITE_ARGS="--flannel-backend=none --disable=local-storage --disable-network-policy --disable-cloud-controller --disable=coredns"
-    log "K3S_LITE=true — flannel/local-storage/network-policy/cloud-controller/coredns disabled"
+    # kube-proxy and helm-controller are also dead weight: there are no
+    # kind: Service or HelmChart objects anywhere in this repo (every pod
+    # is hostNetwork:true, deployed as plain manifests), and kube-proxy's
+    # iptables-restore calls fail forever on nf_tables-only kernels (no
+    # legacy xt_*/ip_tables modules -- confirmed on both x86_64 and arm64
+    # hosts) -- an infinite ~10-30s retry loop that was severe enough on a
+    # <=1GB board to starve out the rest of k3s's own bootstrap (apiserver
+    # never reached Ready). Verified fix: same image, same board, node
+    # Ready in 24s with these two flags added vs. never reaching Ready
+    # without them.
+    K3S_LITE_ARGS="--flannel-backend=none --disable=local-storage --disable-network-policy --disable-cloud-controller --disable=coredns --disable-kube-proxy --disable-helm-controller"
+    log "K3S_LITE=true — flannel/local-storage/network-policy/cloud-controller/coredns/kube-proxy/helm-controller disabled"
     # All SDR pods run hostNetwork:true (no real CNI plumbing needed), but
     # kubelet still gates node Ready on a CNI conf being present — without
     # flannel to write one, it sits in NetworkPluginNotReady forever.

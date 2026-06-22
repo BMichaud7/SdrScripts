@@ -155,8 +155,20 @@ combination — only treat it as a real fault if the read also hangs.
 Each `<device>` in `devices.xml` has `<rx_agc>` and `<rx_gain_db>`:
 
 - `<rx_agc>true</rx_agc>` — hardware AGC (`SoapySDR::Device::setGainMode`)
-  picks gain per-channel automatically. Likely worth enabling for
-  mobile/recon, where signal strength varies a lot, but not yet field-tested.
+  picks gain per-channel automatically.
+  **Do not enable this for RTL-SDR devices.** Field-tested on the Pi's
+  RTL-SDR (R820T via librtlsdr) at multiple frequencies and confirmed via
+  raw IQ capture: with AGC on, the Q channel reliably gets stuck at 0 for
+  the entire capture while I shows real signal — silently corrupted IQ,
+  no error from the driver. Manual gain at the same frequency is clean on
+  both channels. Every shipped `devices.xml` already defaults to
+  `rx_agc=false` for `rtlsdr-0`, so this isn't live in production, but
+  don't be tempted to flip it for mobile/recon's varying signal strength
+  — use a wider fixed gain margin instead. PlutoSDR's AGC (`fast_attack`,
+  via the ad9361 `gain_control_mode` attribute) was also field-tested and
+  is clean — healthy, real-looking I/Q on both channels, no stuck-channel
+  pattern — so this is specifically a librtlsdr/R820T issue, not a
+  general AGC problem.
 - `<rx_agc>false</rx_agc>` — fixed manual gain at `<rx_gain_db>`, for
   repeatable/deterministic captures with known signal levels. `<rx_gain_db>`
   is ignored while `rx_agc` is `true` but stays in the file so you can flip
@@ -212,6 +224,21 @@ both fixed in `entrypoint.sh`:
    the `sdr_controller`/`sdr_acquisition`/`sdr_gps` processes (the supervisor
    loop respawns them in ~3s) once Artemis is confirmed `1/1 Running` is the
    immediate workaround.
+5. **`K3S_LITE=true` node never reaches `Ready`** on a memory-constrained
+   board (confirmed on a <=1GB Pi) — kube-proxy's `iptables-restore` calls
+   fail forever on nf_tables-only kernels (no legacy `xt_*`/`ip_tables`
+   modules; confirmed on both x86_64 and arm64 hosts), and the resulting
+   infinite ~10-30s retry loop was severe enough to starve out the rest of
+   k3s's own bootstrap. Since there are no `kind: Service` or `HelmChart`
+   objects anywhere in this repo (every pod is `hostNetwork: true`, plain
+   manifests), kube-proxy and helm-controller are both pure overhead, not
+   load-bearing. Fixed by adding `--disable-kube-proxy
+   --disable-helm-controller` to `K3S_LITE_ARGS`. Verified on the same
+   board: node `Ready` in 24s with these flags vs. never reaching `Ready`
+   without them. (Currently scoped to `K3S_LITE=true` only — the same
+   root cause applies in full mode too, e.g. the 2-week-old stuck
+   `kube-proxy` retry loop on a non-lite x86_64 dev box, but that's not
+   yet changed here.)
 
 Also requires **rootful podman** (`sudo podman run ...`), not rootless.
 Tried dropping `--cgroupns=host` (which forces the container to see the
