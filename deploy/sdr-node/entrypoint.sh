@@ -299,7 +299,29 @@ start_service() {
     (
         set +e
         while true; do
-            "/usr/bin/$bin" "${args[@]}" >> "$LOG_DIR/${name}.log" 2>&1
+            "/usr/bin/$bin" "${args[@]}" >> "$LOG_DIR/${name}.log" 2>&1 &
+            local child=$!
+            # `wait` only returns when a child EXITS -- it blocks forever if the
+            # child is merely STOPPED (SIGSTOP, a debugger that attached and
+            # detached uncleanly, etc). Confirmed on the dev box for real:
+            # sdr_acquisition sat in state T for 16 days with this loop parked
+            # in wait(), never restarting it, with zero error in any log. Poll
+            # for that case explicitly and force a restart. (Backgrounding the
+            # child with `&` here also matters for a second reason: bash
+            # propagates a fatal signal from a *synchronous foreground* child
+            # to itself, so the old foreground-exec version of this loop died
+            # along with the binary on a plain `kill -9` -- confirmed by that
+            # same incident, the watchdog subshell was gone too, so the
+            # service never came back without a full container restart.)
+            while kill -0 "$child" 2>/dev/null; do
+                if [[ "$(ps -o stat= -p "$child" 2>/dev/null)" == T* ]]; then
+                    warn "$name (pid $child) stopped unexpectedly (state T) — killing and restarting"
+                    kill -KILL "$child" 2>/dev/null
+                    break
+                fi
+                sleep 5
+            done
+            wait "$child" 2>/dev/null
             rc=$?
             warn "$name exited (code $rc) — restarting in 3s"
             sleep 3
