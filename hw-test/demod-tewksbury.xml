@@ -11,7 +11,7 @@
     <password>sdr_hw_test</password>
     <demod_request_queue>rf.demod.request</demod_request_queue>
     <demod_topic>rf.demod</demod_topic>
-    <task_queue>sdr.tasks</task_queue>
+    <task_request_queue>sdr.task.request</task_request_queue>
   </broker>
 
   <engine>

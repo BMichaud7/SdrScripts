@@ -7,8 +7,9 @@
     <password>sdr_hw_test</password>
     <!-- Subscribe: explicit demodulation requests from AnalysisApp or a user app -->
     <demod_request_queue>rf.demod.request</demod_request_queue>
-    <!-- Publish IQ task requests to SdrResourceManager -->
-    <task_request_queue>sdr.tasks</task_request_queue>
+    <!-- Publish IQ task requests to SdrResourceManager (must match its
+         request_queue, see SdrResourceManager/config/devices.xml) -->
+    <task_request_queue>sdr.task.request</task_request_queue>
     <!-- Publish demodulated output (audio/bits/raw) -->
     <demod_topic>rf.demod</demod_topic>
   </broker>
