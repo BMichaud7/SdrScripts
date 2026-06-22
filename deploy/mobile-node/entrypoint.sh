@@ -88,6 +88,40 @@ else
     ok "SDR binaries already installed — skipping RPM download"
 fi
 
+# ── AnalysisApp ONNX model (optional auto-download) ────────────────────────────
+# AnalysisApp's OnnxClassifier is a no-op with an empty model_path (see
+# analysis.xml) -- nothing ever populated one, so AMR classification has
+# been silently disabled in every shipped container until now. Set
+# ANALYSIS_MODEL=amr_cnn_24class (the default; matches analysis.xml's
+# model_path/classes_path) to auto-fetch the latest models-* release from
+# OpenRFStack/AnalysisApp (see tools/ml/publish_models_release.sh there).
+# Or mount a pre-downloaded model: -v /path/to/models:/etc/sdr-analysis/models:ro,z
+# ENABLE_SDR_ANALYSIS defaults to false here, so this is inert by default.
+if [[ "$ENABLE_SDR_ANALYSIS" == "true" ]]; then
+    ANALYSIS_MODEL="${ANALYSIS_MODEL:-amr_cnn_24class}"
+    ANALYSIS_MODEL_DIR=/etc/sdr-analysis/models
+    mkdir -p "$ANALYSIS_MODEL_DIR"
+    ONNX_FILE="$ANALYSIS_MODEL_DIR/${ANALYSIS_MODEL}.onnx"
+    CLASSES_FILE="$ANALYSIS_MODEL_DIR/${ANALYSIS_MODEL}.classes.json"
+    if [[ ! -f "$ONNX_FILE" || ! -f "$CLASSES_FILE" ]]; then
+        MODEL_TAG=$(gh release list --repo OpenRFStack/AnalysisApp --json tagName \
+            -q '[.[] | select(.tagName | startswith("models-"))][0].tagName' 2>/dev/null || true)
+        if [[ -n "$MODEL_TAG" ]]; then
+            log "Downloading AMR model ${ANALYSIS_MODEL} from release ${MODEL_TAG} …"
+            gh release download "$MODEL_TAG" --repo OpenRFStack/AnalysisApp \
+                --pattern "${ANALYSIS_MODEL}.onnx*" \
+                --pattern "${ANALYSIS_MODEL}.classes.json" \
+                --dir "$ANALYSIS_MODEL_DIR" --clobber 2>/dev/null \
+            && ok "AMR model downloaded: $ONNX_FILE" \
+            || warn "Failed to download AMR model — classification disabled"
+        else
+            warn "No models-* release found for OpenRFStack/AnalysisApp — classification disabled"
+        fi
+    else
+        ok "AMR model already present: $ONNX_FILE"
+    fi
+fi
+
 # ── Default configs ───────────────────────────────────────────────────────────
 for cfg in devices.xml scanner.xml node.conf; do
     [[ ! -f "$SDR_ETC/$cfg" ]] && cp "$CONFIG_DIR/$cfg" "$SDR_ETC/$cfg" \

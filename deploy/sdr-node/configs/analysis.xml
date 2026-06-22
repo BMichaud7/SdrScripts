@@ -32,5 +32,15 @@
     <fft_size>4096</fft_size>
     <snr_threshold_db>5.0</snr_threshold_db>
     <rank>2</rank>
+    <!-- model_path/classes_path point at where entrypoint.sh auto-downloads
+         the latest published model (see ANALYSIS_MODEL in entrypoint.sh) --
+         leave model_path empty to disable ONNX classification entirely. -->
+    <onnx>
+      <model_path>/etc/sdr-analysis/models/amr_cnn_24class.onnx</model_path>
+      <classes_path>/etc/sdr-analysis/models/amr_cnn_24class.classes.json</classes_path>
+      <use_gpu>true</use_gpu>
+      <use_tensorrt>true</use_tensorrt>
+      <input_len>1024</input_len>
+    </onnx>
   </engine>
 </sdr_analysis>
