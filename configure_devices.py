@@ -12,12 +12,20 @@ Usage:
     ./configure_devices.py
 """
 import os
+import re
 import shutil
+import subprocess
 import sys
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 NODE_TYPES = ["sdr-node", "mobile-node", "recon-node"]
 
+# sample_rate_min_msps: lowest rate the hardware ADC/driver can actually be
+# set to (0.0 = no documented floor — don't enforce one). The controller
+# doesn't reject requests below this; it acquires at an integer multiple
+# that clears the floor and decimates back down via Ddc, transparently.
+# These are fallback values used only when --probe-devices can't reach the
+# unit (busy / not attached yet) — a live probe always wins when available.
 PRESETS = {
     "pluto": {
         "label": "PlutoSDR",
@@ -27,6 +35,9 @@ PRESETS = {
         "rx_channels": 2, "tx_channels": 2,
         "freq_min_mhz": 70.0, "freq_max_mhz": 6000.0,
         "bandwidth_max_mhz": 20.0, "sample_rate_max_msps": 61.44,
+        # AD9361 minimum interface sample rate (datasheet); SoapyPlutoSDR can
+        # go lower with extra FIR decimation but this is the documented floor.
+        "sample_rate_min_msps": 0.520833,
         "rx_gain_min_db": -3, "rx_gain_max_db": 71,
         "rx_agc": False, "rx_gain_db": 30,
     },
@@ -38,6 +49,11 @@ PRESETS = {
         "rx_channels": 1, "tx_channels": 0,
         "freq_min_mhz": 0.5, "freq_max_mhz": 1700.0,
         "bandwidth_max_mhz": 3.2, "sample_rate_max_msps": 3.2,
+        # RTL2832U rejects setSampleRate() below this (librtlsdr). Note there's
+        # also a dead zone from 300,001-900,000 Hz this single floor can't
+        # express — requests landing in that gap will still fail at the
+        # hardware layer; not modelled here.
+        "sample_rate_min_msps": 0.225001,
         "rx_gain_min_db": 0, "rx_gain_max_db": 49,
         "rx_agc": False, "rx_gain_db": 30,
     },
@@ -49,6 +65,8 @@ PRESETS = {
         "rx_channels": 1, "tx_channels": 1,
         "freq_min_mhz": 1.0, "freq_max_mhz": 6000.0,
         "bandwidth_max_mhz": 20.0, "sample_rate_max_msps": 20.0,
+        # Officially documented HackRF One minimum sample rate.
+        "sample_rate_min_msps": 2.0,
         # Aggregate of HackRF's 3 gain stages (LNA 0-40, VGA 0-62, amp 0/14)
         # as SoapyHackRF exposes a single combined RX gain.
         "rx_gain_min_db": 0, "rx_gain_max_db": 116,
@@ -62,6 +80,9 @@ PRESETS = {
         "rx_channels": 2, "tx_channels": 2,
         "freq_min_mhz": 0.1, "freq_max_mhz": 3800.0,
         "bandwidth_max_mhz": 130.0, "sample_rate_max_msps": 61.44,
+        # Not independently verified for this driver — leave unenforced
+        # rather than risk an incorrect floor; use --probe-devices to fill in.
+        "sample_rate_min_msps": 0.0,
         "rx_gain_min_db": 0, "rx_gain_max_db": 73,
         "rx_agc": False, "rx_gain_db": 30,
     },
@@ -74,6 +95,7 @@ PRESETS = {
         "freq_min_mhz": 70.0, "freq_max_mhz": 6000.0,
         # B200/B210 use the same AD9361 as PlutoSDR, hence matching bandwidth/SR.
         "bandwidth_max_mhz": 56.0, "sample_rate_max_msps": 61.44,
+        "sample_rate_min_msps": 0.520833,
         "rx_gain_min_db": 0, "rx_gain_max_db": 76,
         "rx_agc": False, "rx_gain_db": 30,
     },
@@ -85,6 +107,9 @@ PRESETS = {
         "rx_channels": 1, "tx_channels": 0,
         "freq_min_mhz": 0.001, "freq_max_mhz": 2000.0,
         "bandwidth_max_mhz": 8.0, "sample_rate_max_msps": 10.66,
+        # Varies by RSP model — not independently verified; use
+        # --probe-devices to fill in rather than guessing.
+        "sample_rate_min_msps": 0.0,
         # SDRplay controls gain via reduction steps, not a clean dB range;
         # this is an approximate aggregate — adjust after checking your unit.
         "rx_gain_min_db": 0, "rx_gain_max_db": 40,
@@ -95,10 +120,102 @@ PRESETS = {
         "rx_channels": 1, "tx_channels": 0,
         "freq_min_mhz": 0.0, "freq_max_mhz": 0.0,
         "bandwidth_max_mhz": 0.0, "sample_rate_max_msps": 0.0,
+        "sample_rate_min_msps": 0.0,
         "rx_gain_min_db": 0, "rx_gain_max_db": 0,
         "rx_agc": False, "rx_gain_db": 30,
     },
 }
+
+# ── Live device probing (SoapySDRUtil --probe) ──────────────────────────────
+# Matches the args convention RadioDevice.cpp uses to open devices:
+# driver=X[,uri=Y] (or ,remote=Y for SoapyRemote) — see RadioDevice::open().
+_UNIT_MULT = {
+    "hz": 1.0, "khz": 1e3, "mhz": 1e6, "ghz": 1e9,
+    "sps": 1.0, "ksps": 1e3, "msps": 1e6, "gsps": 1e9,
+}
+
+
+def soapy_args(driver, uri):
+    uri = (uri or "").strip()
+    if uri.startswith("driver="):
+        return uri  # preset already stores a full args string (rtlsdr/hackrf/etc.)
+    parts = [f"driver={driver}"]
+    if driver == "remote":
+        if uri:
+            parts.append(f"remote={uri}")
+    elif uri:
+        parts.append(f"uri={uri}")
+    return ",".join(parts)
+
+
+def _parse_ranges(line):
+    """'[1, 56] MSps' / '[0.225, 0.3], [0.9, 3.2] MHz' -> [(lo_hz, hi_hz), ...]"""
+    unit_m = re.search(r"\]\s*([A-Za-z]+)\s*$", line)
+    mult = _UNIT_MULT.get(unit_m.group(1).lower(), 1.0) if unit_m else 1.0
+    out = []
+    for grp in re.findall(r"\[([^\]]+)\]", line):
+        parts = [p.strip() for p in grp.split(",")]
+        if len(parts) != 2:
+            continue
+        try:
+            lo, hi = float(parts[0]) * mult, float(parts[1]) * mult
+        except ValueError:
+            continue
+        out.append((lo, hi))
+    return out
+
+
+def probe_device(driver, uri, timeout=15):
+    """Run `SoapySDRUtil --probe=...` and pull capability fields out of its
+    text output. Returns a dict of overrides (MHz/MSPS-keyed, matching the
+    preset dict's units) on success, or None if the probe didn't yield usable
+    RX info (tool missing, device not found, device already claimed by
+    another process, timeout, etc.) — callers should fall back to preset
+    defaults in that case, not treat it as fatal.
+    """
+    args = soapy_args(driver, uri)
+    try:
+        proc = subprocess.run(
+            ["SoapySDRUtil", f"--probe={args}"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    out = proc.stdout or ""
+    if "RX Channel" not in out:
+        return None  # make() failed, no match, device busy, etc.
+
+    # Limit parsing to the first "-- RX Channel" block so a TX-only line
+    # with different ranges (e.g. HackRF) doesn't get mixed in.
+    rx_start = out.find("RX Channel")
+    rx_end = out.find("TX Channel")
+    block = out[rx_start: rx_end if rx_end != -1 else len(out)]
+
+    overrides = {}
+    for line in block.splitlines():
+        s = line.strip()
+        if s.startswith("Sample rates:"):
+            ranges = _parse_ranges(s)
+            if ranges:
+                overrides["sample_rate_min_msps"] = min(lo for lo, _ in ranges) / 1e6
+                overrides["sample_rate_max_msps"] = max(hi for _, hi in ranges) / 1e6
+        elif s.startswith("Full freq range:"):
+            ranges = _parse_ranges(s)
+            if ranges:
+                overrides["freq_min_mhz"] = ranges[0][0] / 1e6
+                overrides["freq_max_mhz"] = ranges[0][1] / 1e6
+        elif s.startswith("Filter bandwidths:"):
+            nums = re.findall(r"[\d.]+", s.split(":", 1)[1])
+            unit_m = re.search(r"([A-Za-z]+)\s*$", s)
+            mult = _UNIT_MULT.get(unit_m.group(1).lower(), 1e6) if unit_m else 1e6
+            if nums:
+                overrides["bandwidth_max_mhz"] = max(float(n) for n in nums) * mult / 1e6
+        elif s.startswith("Full gain range:"):
+            ranges = _parse_ranges(s)
+            if ranges:
+                overrides["rx_gain_min_db"] = ranges[0][0]
+                overrides["rx_gain_max_db"] = ranges[0][1]
+    return overrides or None
 
 DEVICES_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <!--
@@ -159,6 +276,7 @@ DEVICE_TEMPLATE = """    <device id="{id}">
         <freq_max_hz>{freq_max_hz}</freq_max_hz>
         <bandwidth_max_hz>{bandwidth_max_hz}</bandwidth_max_hz>
         <sample_rate_max_sps>{sample_rate_max_sps}</sample_rate_max_sps>
+        <sample_rate_min_sps>{sample_rate_min_sps}</sample_rate_min_sps>
         <rx_gain_min_db>{rx_gain_min_db}</rx_gain_min_db>
         <rx_gain_max_db>{rx_gain_max_db}</rx_gain_max_db>
       </capabilities>
@@ -239,13 +357,29 @@ def configure_device(existing_ids):
         print(f"  uri hint: {preset['uri_hint']}")
     uri = ask("uri (leave empty for discovery)", preset["uri"])
 
-    print("Capabilities (Enter to accept preset/default):")
+    if ask_choice(
+        "\nProbe the device live now (SoapySDRUtil) to auto-fill capabilities below?",
+        ["Yes", "No — use preset/static values"], default_idx=0,
+    ) == 0:
+        print("  Probing (device must be attached and not already in use)...")
+        found = probe_device(driver, uri)
+        if found:
+            print(f"  Probe OK — found: {found}")
+            preset = {**preset, **found}
+        else:
+            print("  Probe failed or returned no RX info (tool missing, device "
+                  "busy/not found, or driver doesn't support --probe) — "
+                  "falling back to preset/static values below.")
+
+    print("Capabilities (Enter to accept preset/probed default):")
     rx_channels = ask_int("  RX channels", preset["rx_channels"])
     tx_channels = ask_int("  TX channels", preset["tx_channels"])
     freq_min_mhz = ask_float("  Min frequency (MHz)", preset["freq_min_mhz"])
     freq_max_mhz = ask_float("  Max frequency (MHz)", preset["freq_max_mhz"])
     bandwidth_max_mhz = ask_float("  Max instantaneous bandwidth (MHz)", preset["bandwidth_max_mhz"])
     sample_rate_max_msps = ask_float("  Max sample rate (MSPS)", preset["sample_rate_max_msps"])
+    sample_rate_min_msps = ask_float(
+        "  Min sample rate (MSPS, 0 = no known floor)", preset["sample_rate_min_msps"])
     rx_gain_min_db = ask_int("  RX gain min (dB)", preset["rx_gain_min_db"])
     rx_gain_max_db = ask_int("  RX gain max (dB)", preset["rx_gain_max_db"])
 
@@ -262,6 +396,7 @@ def configure_device(existing_ids):
         freq_min_hz=int(freq_min_mhz * 1e6), freq_max_hz=int(freq_max_mhz * 1e6),
         bandwidth_max_hz=int(bandwidth_max_mhz * 1e6),
         sample_rate_max_sps=int(sample_rate_max_msps * 1e6),
+        sample_rate_min_sps=int(sample_rate_min_msps * 1e6),
         rx_gain_min_db=rx_gain_min_db, rx_gain_max_db=rx_gain_max_db,
         rx_agc="true" if rx_agc else "false", rx_gain_db=rx_gain_db,
     ), dev_id

@@ -78,6 +78,10 @@
         <freq_max_hz>1700000000</freq_max_hz>
         <bandwidth_max_hz>3200000</bandwidth_max_hz>
         <sample_rate_max_sps>3200000</sample_rate_max_sps>
+        <!-- RTL2832U rejects setSampleRate() below this (librtlsdr). Narrowband/
+             digital-protocol tasks below it are auto-clamped + DDC-decimated by
+             the controller instead of failing at the hardware layer. -->
+        <sample_rate_min_sps>225001</sample_rate_min_sps>
         <rx_gain_min_db>0</rx_gain_min_db>
         <rx_gain_max_db>49</rx_gain_max_db>
       </capabilities>
