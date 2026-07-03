@@ -272,6 +272,31 @@ else
 fi
 ok "Infrastructure ready"
 
+# ── Reset USB SDR devices to clear any stalled endpoint state ─────────────────
+# A previous container run terminated abnormally (SIGKILL, OOM, etc.) may leave
+# the RTL-SDR endpoint stalled, causing all subsequent bulk IN transfers to
+# return 0 bytes. USBDEVFS_RESET forces a USB device reset which re-enumerates
+# the device and clears any stalled endpoints.
+python3 - << 'PYEOF' 2>/dev/null || true
+import os, fcntl, glob
+USBDEVFS_RESET = 0x5514
+for vf in glob.glob('/sys/bus/usb/devices/*/idVendor'):
+    try:
+        vid = open(vf).read().strip()
+        pid = open(vf.replace('idVendor','idProduct')).read().strip()
+        if (vid,pid) not in [('0bda','2838'),('0bda','2832')]:
+            continue
+        d = os.path.dirname(vf)
+        bus = open(os.path.join(d,'busnum')).read().strip().zfill(3)
+        dev = open(os.path.join(d,'devnum')).read().strip().zfill(3)
+        path = f'/dev/bus/usb/{bus}/{dev}'
+        fd = os.open(path, os.O_RDWR)
+        fcntl.ioctl(fd, USBDEVFS_RESET, 0)
+        os.close(fd)
+        import sys; print(f'[mobile-node] Reset RTL-SDR at {path}', file=sys.stderr)
+    except Exception: pass
+PYEOF
+
 # ── Start SDR services ────────────────────────────────────────────────────────
 SDR_PIDS=()
 
