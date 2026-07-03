@@ -115,6 +115,23 @@ PRESETS = {
         "rx_gain_min_db": 0, "rx_gain_max_db": 40,
         "rx_agc": False, "rx_gain_db": 30,
     },
+    "winradio": {
+        "label": "WiNRADiO G39DDC",
+        "driver": "g39ddc",
+        "uri": "driver=g39ddc",
+        "uri_hint": "add ,serial=XXXXXXX to pin a specific unit",
+        # 2 independently tunable DDC channels (shared_lo=false).
+        # Ch0 max 5 MSps, Ch1 max 2.5 MSps — capped to Ch1 limit so both channels
+        # are safely schedulable at up to sample_rate_max.
+        "rx_channels": 2, "tx_channels": 0,
+        "freq_min_mhz": 8.0, "freq_max_mhz": 3500.0,
+        "bandwidth_max_mhz": 2.0, "sample_rate_max_msps": 2.5,
+        # Minimum discrete rate from probe output (0.025 MSps)
+        "sample_rate_min_msps": 0.025,
+        # ATT-only gain control (0–10 dB, 10 dB steps)
+        "rx_gain_min_db": 0, "rx_gain_max_db": 10,
+        "rx_agc": False, "rx_gain_db": 5,
+    },
     "custom": {
         "label": "", "driver": "", "uri": "", "uri_hint": "",
         "rx_channels": 1, "tx_channels": 0,
@@ -339,10 +356,11 @@ def configure_device(existing_ids):
             "LimeSDR (USB)",
             "USRP B-series, via UHD (USB)",
             "SDRplay RSP series (USB)",
+            "WiNRADiO G39DDC (USB)",
             "Custom / other SoapySDR driver",
         ],
     )
-    preset_key = ["pluto", "rtlsdr", "hackrf", "limesdr", "usrp", "sdrplay", "custom"][idx]
+    preset_key = ["pluto", "rtlsdr", "hackrf", "limesdr", "usrp", "sdrplay", "winradio", "custom"][idx]
     preset = PRESETS[preset_key]
 
     default_id = preset_key if preset_key != "custom" else "sdr"

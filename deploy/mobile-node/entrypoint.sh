@@ -178,8 +178,16 @@ if [[ "${K3S_LITE:-false}" == "true" ]]; then
     # never reached Ready). Verified fix: same image, same board, node
     # Ready in 24s with these two flags added vs. never reaching Ready
     # without them.
-    K3S_LITE_ARGS="--flannel-backend=none --disable=local-storage --disable-network-policy --disable-cloud-controller --disable=coredns --disable-kube-proxy --disable-helm-controller"
-    log "K3S_LITE=true — flannel/local-storage/network-policy/cloud-controller/coredns/kube-proxy/helm-controller disabled"
+    # --kubelet-arg cgroups-per-qos=false skips creation of the kubepods cgroup
+    # hierarchy (mkdir /sys/fs/cgroup/kubepods), which fails with permission
+    # denied when the host's cgroup v2 tree is not delegated to the container
+    # user (typical for rootless Podman on embedded boards). Pods still run but
+    # without cgroup-based resource limits — acceptable here because every SDR
+    # pod uses hostNetwork:true and the board has no multi-tenant workloads.
+    # --kubelet-arg enforce-node-allocatable="" suppresses the matching QoS
+    # enforcement that would also attempt privileged cgroup writes.
+    K3S_LITE_ARGS="--flannel-backend=none --disable=local-storage --disable-network-policy --disable-cloud-controller --disable=coredns --disable-kube-proxy --disable-helm-controller --kubelet-arg cgroups-per-qos=false --kubelet-arg enforce-node-allocatable="
+    log "K3S_LITE=true — flannel/local-storage/network-policy/cloud-controller/coredns/kube-proxy/helm-controller disabled; cgroups-per-qos disabled for Podman compat"
     # All SDR pods run hostNetwork:true (no real CNI plumbing needed), but
     # kubelet still gates node Ready on a CNI conf being present — without
     # flannel to write one, it sits in NetworkPluginNotReady forever.

@@ -194,8 +194,8 @@ if [[ "${K3S_LITE:-false}" == "true" ]]; then
     # never reached Ready). Verified fix: same image, same board, node
     # Ready in 24s with these two flags added vs. never reaching Ready
     # without them.
-    K3S_LITE_ARGS="--flannel-backend=none --disable=local-storage --disable-network-policy --disable-cloud-controller --disable=coredns --disable-kube-proxy --disable-helm-controller"
-    log "K3S_LITE=true — flannel/local-storage/network-policy/cloud-controller/coredns/kube-proxy/helm-controller disabled"
+    K3S_LITE_ARGS="--flannel-backend=none --disable=local-storage --disable-network-policy --disable-cloud-controller --disable=coredns --disable-kube-proxy --disable-helm-controller --kubelet-arg cgroups-per-qos=false --kubelet-arg enforce-node-allocatable="
+    log "K3S_LITE=true — flannel/local-storage/network-policy/cloud-controller/coredns/kube-proxy/helm-controller disabled; cgroups-per-qos disabled for Podman compat"
     # All SDR pods run hostNetwork:true (no real CNI plumbing needed), but
     # kubelet still gates node Ready on a CNI conf being present — without
     # flannel to write one, it sits in NetworkPluginNotReady forever.
