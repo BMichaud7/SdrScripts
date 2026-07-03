@@ -151,11 +151,17 @@ avahi-daemon --no-chroot --no-drop-root -D >> "$LOG_DIR/avahi.log" 2>&1 \
     && ok "avahi-daemon started (zeroconf PlutoSDR discovery)" \
     || warn "avahi-daemon failed to start — PlutoSDR discovery falls back to USB/PLUTO_IP"
 
-# ── Start k3s ─────────────────────────────────────────────────────────────────
+# ── Start k3s (unless K3S_SKIP=true) ─────────────────────────────────────────
+# Set -e K3S_SKIP=true to bypass k3s entirely — Artemis/Postgres must then be
+# available on localhost (port 5672/5432) via external containers.  Use this
+# on rootless Podman hosts where the container runtime cannot write to the
+# system cgroup tree (/sys/fs/cgroup/k8s.io) and k3s pod creation fails with
+# "permission denied".  All SDR services still start and use the external broker.
 # K3S_HTTPS_PORT defaults to 6444 so mobile can coexist with sdr-node (6443)
 # on the same host without a port conflict. Override with -e K3S_HTTPS_PORT=6443
 # when running mobile standalone.
 K3S_HTTPS_PORT=${K3S_HTTPS_PORT:-6444}
+K3S_PID=""
 K3S_LITE_ARGS=""
 if [[ "${K3S_LITE:-false}" == "true" ]]; then
     # Artemis/Postgres pods both run hostNetwork:true and mount hostPath
@@ -226,40 +232,44 @@ fi
 mkdir -p "$K3S_DATA_DIR"
 echo "$CURRENT_K3S_MODE" > "$K3S_MODE_MARKER"
 
-log "Starting k3s server (port ${K3S_HTTPS_PORT}) …"
-# shellcheck disable=SC2086
-k3s server \
-    --disable=traefik \
-    --disable=servicelb \
-    --disable=metrics-server \
-    --snapshotter=native \
-    --data-dir=/var/lib/rancher/k3s \
-    --https-listen-port="${K3S_HTTPS_PORT}" \
-    --kubelet-arg="feature-gates=KubeletInUserNamespace=true" \
-    ${K3S_LITE_ARGS} \
-    &
-K3S_PID=$!
+if [[ "${K3S_SKIP:-false}" == "true" ]]; then
+    warn "K3S_SKIP=true — skipping k3s; Artemis (port 5672) and PostgreSQL (port 5432) must be running externally"
+else
+    log "Starting k3s server (port ${K3S_HTTPS_PORT}) …"
+    # shellcheck disable=SC2086
+    k3s server \
+        --disable=traefik \
+        --disable=servicelb \
+        --disable=metrics-server \
+        --snapshotter=native \
+        --data-dir=/var/lib/rancher/k3s \
+        --https-listen-port="${K3S_HTTPS_PORT}" \
+        --kubelet-arg="feature-gates=KubeletInUserNamespace=true" \
+        ${K3S_LITE_ARGS} \
+        &
+    K3S_PID=$!
 
-log "Waiting for k3s to be ready …"
-until k3s kubectl get nodes &>/dev/null 2>&1; do sleep 2; done
-ok "k3s ready"
+    log "Waiting for k3s to be ready …"
+    until k3s kubectl get nodes &>/dev/null 2>&1; do sleep 2; done
+    ok "k3s ready"
 
-# ── Deploy infrastructure via k3s ─────────────────────────────────────────────
-log "Applying infrastructure manifests …"
-k3s kubectl apply -f "$MANIFEST_DIR/00-namespace.yaml"
-k3s kubectl apply -f "$MANIFEST_DIR/01-artemis.yaml"
-k3s kubectl apply -f "$MANIFEST_DIR/02-postgres.yaml"
+    # ── Deploy infrastructure via k3s ─────────────────────────────────────────────
+    log "Applying infrastructure manifests …"
+    k3s kubectl apply -f "$MANIFEST_DIR/00-namespace.yaml"
+    k3s kubectl apply -f "$MANIFEST_DIR/01-artemis.yaml"
+    k3s kubectl apply -f "$MANIFEST_DIR/02-postgres.yaml"
 
-log "Waiting for Artemis and PostgreSQL to be ready …"
-# 600s, not 180s: a cold image pull of Artemis/Postgres over a slow/cellular
-# link can take 5-8+ minutes. A premature timeout here used to let the SDR
-# app processes start before the broker was reachable — AcquisitionApp's
-# controller-discovery HEALTH_QUERY would then time out and the process
-# would hang waiting on AMQP channel teardown, never submitting a scan task.
-k3s kubectl rollout status deployment/artemis -n sdr-system --timeout=600s \
-    || warn "Artemis not ready yet — continuing"
-k3s kubectl rollout status deployment/postgres -n sdr-system --timeout=600s \
-    || warn "PostgreSQL not ready yet — continuing"
+    log "Waiting for Artemis and PostgreSQL to be ready …"
+    # 600s, not 180s: a cold image pull of Artemis/Postgres over a slow/cellular
+    # link can take 5-8+ minutes. A premature timeout here used to let the SDR
+    # app processes start before the broker was reachable — AcquisitionApp's
+    # controller-discovery HEALTH_QUERY would then time out and the process
+    # would hang waiting on AMQP channel teardown, never submitting a scan task.
+    k3s kubectl rollout status deployment/artemis -n sdr-system --timeout=600s \
+        || warn "Artemis not ready yet — continuing"
+    k3s kubectl rollout status deployment/postgres -n sdr-system --timeout=600s \
+        || warn "PostgreSQL not ready yet — continuing"
+fi
 ok "Infrastructure ready"
 
 # ── Start SDR services ────────────────────────────────────────────────────────
@@ -313,14 +323,13 @@ start_service() {
 [[ "$ENABLE_SDR_GPS"         == "true" ]] && start_service sdr-gps         sdr_gps         /etc/sdr-gps/gps.xml
 
 ok "All services started"
-k3s kubectl get pods -n sdr-system 2>/dev/null || true
+[[ "${K3S_SKIP:-false}" != "true" ]] && k3s kubectl get pods -n sdr-system 2>/dev/null || true
 
-# Keep container alive.  Wait for k3s first; if k3s has already died or was
-# never healthy (e.g. cgroup restrictions on Podman), fall through and block
-# on the SDR service watchdog subshells (they run infinite restart loops, so
-# they never exit on their own — the container stays up as long as services
-# are running).
-wait $K3S_PID 2>/dev/null || warn "k3s exited — SDR services continue running without orchestration"
+# Keep container alive.  If k3s was started, wait for it first; if it exits or
+# was never healthy (e.g. cgroup restrictions on Podman, or K3S_SKIP=true),
+# fall through and block on the SDR service watchdog subshells (they run
+# infinite restart loops, so they never exit on their own).
+[[ -n "$K3S_PID" ]] && { wait $K3S_PID 2>/dev/null || warn "k3s exited — SDR services continue running without orchestration"; }
 # SDR_PIDS are watchdog subshells that loop forever; waiting on them keeps
 # the container alive even after k3s exits.
 wait "${SDR_PIDS[@]}" 2>/dev/null || sleep infinity
