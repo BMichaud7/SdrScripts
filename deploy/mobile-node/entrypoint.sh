@@ -305,7 +305,14 @@ start_service() {
 [[ "$ENABLE_SDR_GPS"         == "true" ]] && start_service sdr-gps         sdr_gps         /etc/sdr-gps/gps.xml
 
 ok "All services started"
-k3s kubectl get pods -n sdr-system
+k3s kubectl get pods -n sdr-system 2>/dev/null || true
 
-# Keep container alive — exit if k3s dies
-wait $K3S_PID
+# Keep container alive.  Wait for k3s first; if k3s has already died or was
+# never healthy (e.g. cgroup restrictions on Podman), fall through and block
+# on the SDR service watchdog subshells (they run infinite restart loops, so
+# they never exit on their own — the container stays up as long as services
+# are running).
+wait $K3S_PID 2>/dev/null || warn "k3s exited — SDR services continue running without orchestration"
+# SDR_PIDS are watchdog subshells that loop forever; waiting on them keeps
+# the container alive even after k3s exits.
+wait "${SDR_PIDS[@]}" 2>/dev/null || sleep infinity

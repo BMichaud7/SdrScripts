@@ -339,7 +339,9 @@ start_service() {
 [[ "$ENABLE_SDR_GPS"         == "true" ]] && start_service sdr-gps         sdr_gps    /etc/sdr-gps/gps.xml
 
 ok "All services started"
-k3s kubectl get pods -n sdr-system
+k3s kubectl get pods -n sdr-system 2>/dev/null || true
 
-# Keep container alive — exit if k3s dies
-wait $K3S_PID
+# Keep container alive — wait for k3s; if it exits or was never healthy,
+# fall through and block on SDR service watchdog subshells instead.
+wait $K3S_PID 2>/dev/null || warn "k3s exited — SDR services continue running without orchestration"
+wait "${SDR_PIDS[@]}" 2>/dev/null || sleep infinity
