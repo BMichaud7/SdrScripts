@@ -90,7 +90,7 @@ RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel avahi-devel dbus-d
         -DCMAKE_INSTALL_PREFIX=/usr && \
     cmake --build /tmp/SoapyPlutoSDR-build --parallel && \
     cmake --install /tmp/SoapyPlutoSDR-build && \
-    git clone --depth 1 \
+    git clone --depth 1 --branch v0.6.0 \
         https://github.com/osmocom/rtl-sdr.git /tmp/rtl-sdr && \
     cmake -B /tmp/rtl-sdr-build -S /tmp/rtl-sdr \
         -DCMAKE_INSTALL_PREFIX=/usr \
