@@ -92,6 +92,8 @@ RUN dnf install -y libusb1-devel libxml2-devel SoapySDR-devel avahi-devel dbus-d
     cmake --install /tmp/libiio-build && \
     git clone --depth 1 \
         https://github.com/pothosware/SoapyPlutoSDR.git /tmp/SoapyPlutoSDR && \
+    sed -i 's/dev = iio_context_find_device(ctx, "ad9361-phy");/iio_context_set_timeout(ctx, 5000);\n\tdev = iio_context_find_device(ctx, "ad9361-phy");/' \
+        /tmp/SoapyPlutoSDR/PlutoSDR_Settings.cpp && \
     cmake -B /tmp/SoapyPlutoSDR-build -S /tmp/SoapyPlutoSDR \
         -DCMAKE_INSTALL_PREFIX=/usr && \
     cmake --build /tmp/SoapyPlutoSDR-build --parallel && \
