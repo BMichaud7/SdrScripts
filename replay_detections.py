@@ -70,7 +70,9 @@ def fetch_signals(db: sqlite3.Connection, count: int, include_classified: bool) 
     where = "" if include_classified else "WHERE classified = 0"
     limit = f"LIMIT {count}" if count > 0 else ""
     rows = db.execute(f"""
-        SELECT id, freq_hz, bandwidth_hz, power_db, snr_db, timestamp_ms, scanner_id
+        SELECT id, freq_hz, bandwidth_hz, power_db, snr_db,
+               CAST(strftime('%s', first_seen) * 1000 AS INTEGER) AS timestamp_ms,
+               scanner_id
         FROM signals
         {where}
         ORDER BY power_db DESC
