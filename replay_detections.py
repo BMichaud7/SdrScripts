@@ -120,9 +120,11 @@ class _Publisher(proton.handlers.MessagingHandler):
     def on_sendable(self, ev):
         """@brief Send the next signal when the sender has credit, then schedule the gap timer."""
         if self._idx >= len(self._signals):
-            ev.connection.close()
+            if self._sender:
+                self._sender.connection.close()
             return
-        if ev.sender.credit < 1:
+        # Use self._sender: ev.sender is None on timer events (on_timer_task calls this)
+        if not self._sender or self._sender.credit < 1:
             return
 
         sig = self._signals[self._idx]
@@ -143,7 +145,7 @@ class _Publisher(proton.handlers.MessagingHandler):
         m = proton.Message()
         m.body = msg_body
         m.content_type = "application/json"
-        ev.sender.send(m)
+        self._sender.send(m)
 
         freq_mhz = sig["freq_hz"] / 1e6
         print(f"  [{self._idx+1}/{len(self._signals)}] "
