@@ -403,6 +403,8 @@ def test_scheduled(sess: _Session) -> bool:
     streams  = resp.get("streams", [])
     udp_port = streams[0].get("udp_port", 0) if streams else 0
     task_id  = resp.get("task_id", "")
+    if not udp_port:
+        print("  ✗ no udp_port in response"); return False
     print(f"  ACCEPTED with SCHEDULED mode, udp_port={udp_port}")
     print(f"  waiting for schedulerTick to activate at T+5s ...")
 
@@ -450,6 +452,8 @@ def test_scan(sess: _Session) -> bool:
 
     streams  = resp.get("streams", [])
     udp_port = streams[0].get("udp_port", 0) if streams else 0
+    if not udp_port:
+        print("  ✗ no udp_port in response"); return False
     pkts = _count_iq_packets(udp_port, want_samples=10000, timeout_s=20)
     ok = pkts > 0
     print(f"  {'✓' if ok else '✗'} received {pkts} IQ packets across scan entries (port={udp_port})")
